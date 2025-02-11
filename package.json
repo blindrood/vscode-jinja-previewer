@@ -11,13 +11,29 @@
   ],
   "activationEvents": [],
   "main": "./dist/extension.js",
+  "publisher": "PSSolutions",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/blindrood/vscode-jinja-previewer.git"
+  },
   "contributes": {
     "commands": [
       {
         "command": "jinjer.preview",
         "title": "jinjaPreview"
       }
-    ]
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Jinjer",
+      "properties": {
+        "jinjer.contextFile": {
+          "type": "string",
+          "default": ".jinjer.json",
+          "description": "Relative path (from the active file folder) of the context file with variables. Supports JSON and YAML formats."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "pnpm run package",
@@ -41,7 +57,6 @@
     "@types/vscode": "^1.97.0",
     "@typescript-eslint/eslint-plugin": "^8.22.0",
     "@typescript-eslint/parser": "^8.22.0",
-    "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "esbuild": "^0.24.2",
     "eslint": "^9.19.0",
