@@ -2,7 +2,7 @@
   "name": "jinjer",
   "displayName": "jinjer",
   "description": "Jinja2 Previewer",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "engines": {
     "vscode": "^1.97.0"
   },
@@ -30,7 +30,7 @@
         "jinjer.contextFile": {
           "type": "string",
           "default": ".jinjer.json",
-          "description": "Relative path (from the active file folder) of the context file with variables. Supports JSON and YAML formats."
+          "description": "The name of the context file (JSON or YAML) to use for rendering Jinja templates.  If the file is not found in the same directory as the template, parent directories will be searched until the file is found or the workspace root is reached (similar to .gitignore)."
         }
       }
     }

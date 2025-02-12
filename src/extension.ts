@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as nunjucks from 'nunjucks';
 import * as yaml from 'js-yaml';
+import * as path from 'path';
+import { promises as fs } from 'fs';
 
 let panel: vscode.WebviewPanel | undefined;
 let activeDocument: vscode.TextDocument | undefined;
@@ -92,7 +94,7 @@ function getWebviewHtml(content: string, document: vscode.TextDocument): string 
     const extension = getExtension(document.fileName);
     const languageId = mapExtensionToPrism(extension);
 
-    // Content Security Policy – zapisywany jako template literal
+    // Content Security Policy
     const csp = `
         default-src 'none';
         script-src 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com;
@@ -115,13 +117,13 @@ function getWebviewHtml(content: string, document: vscode.TextDocument): string 
               code { font-size: 14px; display: block; }
               ${prismCSS()}
           </style>
+          <!-- Load Prism core -->
           <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.28.0/prism.min.js"></script>
-          <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.28.0/components/prism-json.min.js"></script>
+          <!-- Load Prism autoloader plugin -->
+          <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.28.0/plugins/autoloader/prism-autoloader.min.js"></script>
           <script>
-            // Konfiguracja autoloadera, jeśli jest używany
-            if (Prism.plugins.autoloader) {
-                Prism.plugins.autoloader.languages_path = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.28.0/components/';
-            }
+            // Configure the autoloader plugin
+            Prism.plugins.autoloader.languages_path = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.28.0/components/';
             window.addEventListener('load', function() {
               Prism.highlightAll();
             });
@@ -208,26 +210,27 @@ function prismCSS(): string {
 
 async function getContextData(document: vscode.TextDocument): Promise<any> {
     const config = vscode.workspace.getConfiguration('jinjer');
-    // Jeśli config.get zwróci undefined, użyj domyślnej wartości ".jinjer.json"
-    const inspected = config.inspect<string>('contextFile');
-    console.log("Inspected contextFile:", inspected);
-    const contextPath = config.get<string>('contextFile') || ".jinjer.json";
-    console.log("Retrieved contextFile:", contextPath);
+    const contextFileName = config.get<string>('contextFile') || ".jinjer.json";
     let contextData = {};
 
-    if (contextPath) {
+    if (contextFileName) {
         try {
-            // Jeśli plik kontekstowy jest w tym samym katalogu co edytowany plik, przejdź do katalogu nadrzędnego:
-            const contextUri = vscode.Uri.joinPath(document.uri, '..', contextPath);
-            const contextFile = await vscode.workspace.fs.readFile(contextUri);
-            const contextString = Buffer.from(contextFile).toString('utf8');
-            if (contextPath.endsWith('.json')) {
-                contextData = JSON.parse(contextString);
-            } else if (contextPath.endsWith('.yaml') || contextPath.endsWith('.yml')) {
-                contextData = yaml.load(contextString) as any;
+            const contextFileUri = await findContextFile(document.uri, contextFileName);
+
+            if (contextFileUri) {
+                const contextFile = await vscode.workspace.fs.readFile(contextFileUri);
+                const contextString = Buffer.from(contextFile).toString('utf8');
+                if (contextFileName.endsWith('.json')) {
+                    contextData = JSON.parse(contextString);
+                } else if (contextFileName.endsWith('.yaml') || contextFileName.endsWith('.yml')) {
+                    contextData = yaml.load(contextString) as any;
+                } else {
+                    vscode.window.showWarningMessage('Unsupported context file format. Please use .json or .yaml');
+                }
             } else {
-                vscode.window.showWarningMessage('Unsupported context file format. Please use .json or .yaml');
+                console.log(`Context file "${contextFileName}" not found.`);
             }
+
         } catch (error) {
             vscode.window.showErrorMessage(`Error reading context file: ${error}`);
             console.error("❌ Error loading context file:", error);
@@ -235,6 +238,26 @@ async function getContextData(document: vscode.TextDocument): Promise<any> {
     }
 
     return contextData;
+}
+
+async function findContextFile(startUri: vscode.Uri, contextFileName: string): Promise<vscode.Uri | undefined> {
+    let currentUri = startUri;
+    let workspaceFolder = vscode.workspace.getWorkspaceFolder(startUri);
+
+    while (workspaceFolder && currentUri.path !== workspaceFolder.uri.path) {
+        const contextUri = vscode.Uri.joinPath(currentUri, contextFileName);
+        try {
+            await fs.access(contextUri.fsPath); // Check if file exists
+            return contextUri;
+        } catch {
+            // File not found, move up one directory
+            const currentPath = currentUri.path;
+            const parentPath = path.dirname(currentPath);
+            currentUri = vscode.Uri.file(parentPath);
+
+        }
+    }
+    return undefined; // File not found within the workspace folder
 }
 
 export function deactivate() {}

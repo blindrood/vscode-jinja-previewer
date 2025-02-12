@@ -16,3 +16,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ## [0.0.2] - 2024.02.12
 
 - Minor fixes
+
+## [0.0.3] - 2024-02-12
+
+- Syntax colouring fixes, better handling of .jinjer.json
