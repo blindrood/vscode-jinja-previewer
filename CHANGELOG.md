@@ -12,3 +12,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Added support for context variables from JSON and YAML files.
 - Configurable settings for auto-refresh, context file location, and error display.
 - Basic support for Jinja includes and macros.
+
+## [0.0.2] - 2024.02.12
+
+- Minor fixes

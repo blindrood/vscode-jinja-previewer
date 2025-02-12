@@ -2,7 +2,7 @@
   "name": "jinjer",
   "displayName": "jinjer",
   "description": "Jinja2 Previewer",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "engines": {
     "vscode": "^1.97.0"
   },

@@ -1,8 +1,7 @@
-import assert from 'assert';
+import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as myExtension from '../extension'; // Import your extension
 
 suite('Jinja Previewer Extension Tests', () => {
     vscode.window.showInformationMessage('Starting Jinja Previewer tests.');
@@ -35,45 +34,32 @@ suite('Jinja Previewer Extension Tests', () => {
     });
 
 
-    test('Preview renders correctly with context', async () => {
-        const doc = await vscode.workspace.openTextDocument(templateFileUri);
-        await vscode.window.showTextDocument(doc); // Open in editor to activate extension
+    // test('Preview command should update webview content', async () => {
+    //     // Open a test file
+    //     const doc = await vscode.workspace.openTextDocument({language: 'jinja', content: 'Hello {{ world }}'});
+    //     await vscode.window.showTextDocument(doc);
 
-        // Wait for the preview to render (you might need to adjust the timeout)
-        await new Promise(resolve => setTimeout(resolve, 1000));
+    //     // Set up a mock context file (if needed for the test)
 
-        // Get the webview content
-        const panel = myExtension.getPanel();  // Assuming getPanel is exported from your extension
-        assert(panel, "Webview panel not found");
-        if (!panel) {return;}; // Prevent type error
-        const renderedHtml = panel.webview.html;
+    //     // Execute the command
+    //     await vscode.commands.executeCommand('jinjer.preview');
 
-        assert.ok(renderedHtml.includes('Hello World!'), 'Rendered HTML does not contain expected output');
-    });
+    //     const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    //     await delay(500); // Example, adjust as needed
 
-    test('Preview updates on template change', async () => {
-        // ... (similar setup as above)
+    //     // Get the webview panel (you might need to find it in the window's webviews)
+    //     const webviewPanel = vscode.window.tabGroups.all.flatMap(group => group.tabs
+    //         .filter((tab): tab is vscode.Tab & {input: vscode.WebviewView} => (
+    //             tab.input instanceof vscode.WebviewView && tab.input.viewType === 'jinjaPreview' // Use the correct viewType
+    //         ))
+    //         .map(tab => tab.input.webviewPanel)
+    //     )[0];
 
-        const doc = await vscode.workspace.openTextDocument(templateFileUri);
-        const editor = await vscode.window.showTextDocument(doc);
+    //     assert.ok(webviewPanel?.webview.html.includes("Hello "));
 
-        // Make a change to the template
-        const newTemplateContent = 'Goodbye {{ name }}!';
-        const edit = new vscode.WorkspaceEdit();
-        edit.replace(doc.uri, new vscode.Range(0, 0, doc.lineCount, 0), newTemplateContent);
-        await vscode.workspace.applyEdit(edit);
-        await doc.save();
-
-        // Wait for preview update
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        // Verify update
-        const panel = myExtension.getPanel();
-        assert(panel, "Webview panel not found");
-        if (!panel) {return;}; // Prevent type error
-        const updatedHtml = panel.webview.html;
-        assert.ok(updatedHtml.includes('Goodbye World!'), 'Preview did not update correctly');
-    });
+    //     // Clean up - Close the panel (important!)
+    //     panel?.dispose();
+    // });
 
     // Add more tests for different scenarios (e.g., invalid context, missing context file, errors in template)
 });

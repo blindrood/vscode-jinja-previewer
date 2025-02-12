@@ -14,7 +14,6 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.window.showErrorMessage('No active editor.');
             return;
         }
-
         activeDocument = editor.document;
 
         if (panel) {
@@ -31,10 +30,8 @@ export function activate(context: vscode.ExtensionContext) {
             });
         }
 
-        // Update the preview initially
         await updateWebview();
 
-        // Update preview when the document changes
         vscode.workspace.onDidChangeTextDocument(event => {
             if (event.document === activeDocument) {
                 console.log("📢 Detected document change! Updating preview...");
@@ -42,7 +39,6 @@ export function activate(context: vscode.ExtensionContext) {
             }
         });
 
-        // Update preview when switching active editors
         vscode.window.onDidChangeActiveTextEditor(editor => {
             if (editor) {
                 activeDocument = editor.document;
@@ -50,8 +46,14 @@ export function activate(context: vscode.ExtensionContext) {
             }
         });
 
-        // Optionally, you could set up a file watcher for the context file here
-        // (if you want live updates when the context file changes)
+        vscode.workspace.onDidSaveTextDocument(async (document) => {
+            const config = vscode.workspace.getConfiguration('jinjer');
+            const contextPath = config.get<string>('contextFile');
+            if (contextPath && document.fileName.endsWith(contextPath)) {
+                console.log(`📢 Context file ${document.fileName} saved! Reloading context...`);
+                await updateWebview();
+            }
+        });
     });
 
     context.subscriptions.push(disposable);
@@ -63,9 +65,9 @@ export function activate(context: vscode.ExtensionContext) {
         try {
             console.log("🔄 Updating preview...");
             const contextData = await getContextData(activeDocument);
+            console.log("📢 Loaded context data:", contextData);
             const templateContent = activeDocument.getText();
 
-            // Configure nunjucks to preserve whitespace/newlines
             const env = nunjucks.configure({
                 autoescape: true,
                 trimBlocks: false,
@@ -73,11 +75,14 @@ export function activate(context: vscode.ExtensionContext) {
             });
             const renderedHtml = env.renderString(templateContent, contextData);
 
-            // Set the webview HTML with the rendered (and escaped) content
-            panel.webview.html = getWebviewHtml(renderedHtml, activeDocument);
-            console.log("✅ Updated preview successfully!");
+            if (panel) {
+                panel.webview.html = getWebviewHtml(renderedHtml, activeDocument);
+                console.log("✅ Updated preview successfully!");
+            }
         } catch (error) {
-            panel.webview.html = getWebviewHtml(`<pre style="color: red;">${error}</pre>`, activeDocument);
+            if (panel) {
+                panel.webview.html = getWebviewHtml(`<pre style="color: red;">${error}</pre>`, activeDocument);
+            }
             console.error("❌ Nunjucks Render Error:", error);
         }
     }
@@ -85,11 +90,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 function getWebviewHtml(content: string, document: vscode.TextDocument): string {
     const extension = getExtension(document.fileName);
-    // You can use mapExtensionToPrism(extension) if you support multiple languages.
-    // For now, we're hardcoding JSON for testing.
-    const languageId = "json";
+    const languageId = mapExtensionToPrism(extension);
 
-    // Content Security Policy: allow inline scripts/styles from cdnjs
+    // Content Security Policy – zapisywany jako template literal
     const csp = `
         default-src 'none';
         script-src 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com;
@@ -112,11 +115,13 @@ function getWebviewHtml(content: string, document: vscode.TextDocument): string 
               code { font-size: 14px; display: block; }
               ${prismCSS()}
           </style>
-          <!-- Load Prism core and the JSON language definition -->
           <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.28.0/prism.min.js"></script>
           <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.28.0/components/prism-json.min.js"></script>
           <script>
-            // When the window loads, trigger syntax highlighting.
+            // Konfiguracja autoloadera, jeśli jest używany
+            if (Prism.plugins.autoloader) {
+                Prism.plugins.autoloader.languages_path = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.28.0/components/';
+            }
             window.addEventListener('load', function() {
               Prism.highlightAll();
             });
@@ -160,7 +165,6 @@ function mapExtensionToPrism(extension: string): string {
     return prismMap[extension] || "plaintext";
 }
 
-// Escape special HTML characters but preserve newline characters.
 function escapeHtml(content: string): string {
     return content
         .replace(/&/g, "&amp;")
@@ -204,13 +208,16 @@ function prismCSS(): string {
 
 async function getContextData(document: vscode.TextDocument): Promise<any> {
     const config = vscode.workspace.getConfiguration('jinjer');
-    // Get the context file from configuration. For example, ".jinjer.json" or ".jinjer.yaml"
-    let contextPath = config.get('jinjer.contextFile') as string | undefined;
+    // Jeśli config.get zwróci undefined, użyj domyślnej wartości ".jinjer.json"
+    const inspected = config.inspect<string>('contextFile');
+    console.log("Inspected contextFile:", inspected);
+    const contextPath = config.get<string>('contextFile') || ".jinjer.json";
+    console.log("Retrieved contextFile:", contextPath);
     let contextData = {};
 
     if (contextPath) {
         try {
-            // Resolve the context file relative to the active document's directory.
+            // Jeśli plik kontekstowy jest w tym samym katalogu co edytowany plik, przejdź do katalogu nadrzędnego:
             const contextUri = vscode.Uri.joinPath(document.uri, '..', contextPath);
             const contextFile = await vscode.workspace.fs.readFile(contextUri);
             const contextString = Buffer.from(contextFile).toString('utf8');
@@ -223,16 +230,11 @@ async function getContextData(document: vscode.TextDocument): Promise<any> {
             }
         } catch (error) {
             vscode.window.showErrorMessage(`Error reading context file: ${error}`);
+            console.error("❌ Error loading context file:", error);
         }
-    } else {
-        console.log("No context file configured. Using empty context.");
     }
 
     return contextData;
-}
-
-export function getPanel(): vscode.WebviewPanel | undefined {
-    return panel;
 }
 
 export function deactivate() {}
