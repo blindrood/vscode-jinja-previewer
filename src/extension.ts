@@ -36,7 +36,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         vscode.workspace.onDidChangeTextDocument(event => {
             if (event.document === activeDocument) {
-                console.log("📢 Detected document change! Updating preview...");
+                console.log("Jinjer: 📢 Detected document change! Updating preview...");
                 updateWebview();
             }
         });
@@ -65,9 +65,9 @@ export function activate(context: vscode.ExtensionContext) {
             return;
         }
         try {
-            console.log("🔄 Updating preview...");
+            console.log("Jinjer: 🔄 Updating preview...");
             const contextData = await getContextData(activeDocument);
-            console.log("📢 Loaded context data:", contextData);
+            console.log("Jinjer: 📢 Loaded context data:", contextData);
             const templateContent = activeDocument.getText();
 
             const env = nunjucks.configure({
@@ -79,13 +79,13 @@ export function activate(context: vscode.ExtensionContext) {
 
             if (panel) {
                 panel.webview.html = getWebviewHtml(renderedHtml, activeDocument);
-                console.log("✅ Updated preview successfully!");
+                console.log("Jinjer: ✅ Updated preview successfully!");
             }
         } catch (error) {
             if (panel) {
                 panel.webview.html = getWebviewHtml(`<pre style="color: red;">${error}</pre>`, activeDocument);
             }
-            console.error("❌ Nunjucks Render Error:", error);
+            console.error("Jinjer: ❌ Nunjucks Render Error:", error);
         }
     }
 }
@@ -111,12 +111,7 @@ function getWebviewHtml(content: string, document: vscode.TextDocument): string 
           <meta charset="UTF-8">
           <meta http-equiv="Content-Security-Policy" content="${csp}">
           <title>Jinja Preview</title>
-          <style>
-              body { font-family: sans-serif; padding: 10px; }
-              pre { white-space: pre-wrap; word-wrap: break-word; font-family: monospace; }
-              code { font-size: 14px; display: block; }
-              ${prismCSS()}
-          </style>
+          <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.28.0/themes/prism-tomorrow.min.css">
           <!-- Load Prism core -->
           <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.28.0/prism.min.js"></script>
           <!-- Load Prism autoloader plugin -->
@@ -176,88 +171,79 @@ function escapeHtml(content: string): string {
         .replace(/'/g, "&#39;");
 }
 
-function prismCSS(): string {
-    return `
-        /* Prism.js Theme: Tomorrow Night */
-        code[class*="language-"], pre[class*="language-"] {
-            color: #ccc;
-            background: none;
-            font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
-            font-size: 1em;
-            text-align: left;
-            white-space: pre;
-            word-spacing: normal;
-            word-break: normal;
-            line-height: 1.5;
-            tab-size: 4;
-            hyphens: none;
-        }
-        pre[class*="language-"] { padding: 1em; margin: 0; overflow: auto; }
-        .token.comment, .token.prolog, .token.doctype, .token.cdata { color: #999; }
-        .token.punctuation { color: #ccc; }
-        .token.property, .token.tag, .token.constant, .token.symbol, .token.deleted { color: #e2777a; }
-        .token.boolean, .token.number { color: #f08d49; }
-        .token.selector, .token.attr-name, .token.string, .token.char, .token.builtin, .token.inserted { color: #abe338; }
-        .token.operator, .token.entity, .token.url, .language-css .token.string, .style .token.string { color: #67cdcc; }
-        .token.atrule, .token.attr-value, .token.keyword { color: #c678dd; }
-        .token.function { color: #6196cc; }
-        .token.regex, .token.important, .token.variable { color: #e90; }
-        .token.important, .token.bold { font-weight: bold; }
-        .token.italic { font-style: italic; }
-        .token.entity { cursor: help; }
-    `;
-}
-
 async function getContextData(document: vscode.TextDocument): Promise<any> {
     const config = vscode.workspace.getConfiguration('jinjer');
     const contextFileName = config.get<string>('contextFile') || ".jinjer.json";
+
+    console.log(`Jinjer: 📂 Looking for context file: ${contextFileName}`);
+
+    const contextFileUri = await findContextFile(document.uri, contextFileName);
+
+    if (!contextFileUri) {
+        console.error(`Jinjer: ❌ Context file "${contextFileName}" not found.`);
+        return {};  // Return empty object to avoid crashes
+    }
+
     let contextData = {};
+    try {
+        const contextFile = await vscode.workspace.fs.readFile(contextFileUri);
+        const contextString = Buffer.from(contextFile).toString('utf8');
 
-    if (contextFileName) {
-        try {
-            const contextFileUri = await findContextFile(document.uri, contextFileName);
-
-            if (contextFileUri) {
-                const contextFile = await vscode.workspace.fs.readFile(contextFileUri);
-                const contextString = Buffer.from(contextFile).toString('utf8');
-                if (contextFileName.endsWith('.json')) {
-                    contextData = JSON.parse(contextString);
-                } else if (contextFileName.endsWith('.yaml') || contextFileName.endsWith('.yml')) {
-                    contextData = yaml.load(contextString) as any;
-                } else {
-                    vscode.window.showWarningMessage('Unsupported context file format. Please use .json or .yaml');
-                }
-            } else {
-                console.log(`Context file "${contextFileName}" not found.`);
-            }
-
-        } catch (error) {
-            vscode.window.showErrorMessage(`Error reading context file: ${error}`);
-            console.error("❌ Error loading context file:", error);
+        if (contextFileName.endsWith('.json')) {
+            contextData = JSON.parse(contextString);
+        } else if (contextFileName.endsWith('.yaml') || contextFileName.endsWith('.yml')) {
+            contextData = yaml.load(contextString) as any;
+        } else {
+            vscode.window.showWarningMessage('Unsupported context file format. Please use .json or .yaml');
         }
+
+        console.log("Jinjer: ✅ Successfully loaded context data:", contextData);
+
+    } catch (error) {
+        vscode.window.showErrorMessage(`Error reading context file: ${error}`);
+        console.error("Jinjer: ❌ Error loading context file:", error);
+    }
+
+    // Check and apply variable suffix
+    const variableSuffix = config.get<string>('variableSuffix', "cookiecutter");
+    console.log(`Jinjer: 🔍 Retrieved variableSuffix: "${variableSuffix}"`);
+
+    if (variableSuffix) {
+        contextData = { [variableSuffix]: contextData };
+        console.log("Jinjer: ✅ Applied variable suffix:", contextData);
+    } else {
+        console.log("Jinjer: ❌ Suffix not set, using direct context data.");
     }
 
     return contextData;
 }
 
 async function findContextFile(startUri: vscode.Uri, contextFileName: string): Promise<vscode.Uri | undefined> {
-    let currentUri = startUri;
-    let workspaceFolder = vscode.workspace.getWorkspaceFolder(startUri);
+    let currentUri = vscode.Uri.file(path.dirname(startUri.fsPath));
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(startUri);
 
-    while (workspaceFolder && currentUri.path !== workspaceFolder.uri.path) {
+    if (!workspaceFolder) {
+        console.error("Jinjer: ❌ No workspace folder found!");
+        return undefined;
+    }
+
+    while (true) {
         const contextUri = vscode.Uri.joinPath(currentUri, contextFileName);
         try {
-            await fs.access(contextUri.fsPath); // Check if file exists
+            await fs.access(contextUri.fsPath);
             return contextUri;
-        } catch {
-            // File not found, move up one directory
-            const currentPath = currentUri.path;
-            const parentPath = path.dirname(currentPath);
-            currentUri = vscode.Uri.file(parentPath);
+        } catch {}
 
-        }
+        if (currentUri.fsPath === workspaceFolder.uri.fsPath) {break;};
+
+        const parentPath = path.dirname(currentUri.fsPath);
+        if (parentPath === currentUri.fsPath) {break;};
+
+        currentUri = vscode.Uri.file(parentPath);
     }
-    return undefined; // File not found within the workspace folder
+
+    console.warn(`Jinjer: ❌ Context file "${contextFileName}" not found.`);
+    return undefined;
 }
 
 export function deactivate() {}

@@ -20,3 +20,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ## [0.0.3] - 2024-02-12
 
 - Syntax colouring fixes, better handling of .jinjer.json
+
+## [0.0.4] - 2024-02-13
+
+- Introducing variable suffix configuration parameter
