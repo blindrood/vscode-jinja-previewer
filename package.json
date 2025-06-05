@@ -2,8 +2,8 @@
   "name": "jinjer",
   "displayName": "jinjer",
   "icon": "logo.png",
-  "description": "Jinja2 Previewer",
-  "version": "0.0.4",
+  "description": "Jinja2 Previewer - Now with more features!",
+  "version": "0.0.5",
   "engines": {
     "vscode": "^1.97.0"
   },

@@ -24,3 +24,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ## [0.0.4] - 2024-02-13
 
 - Introducing variable suffix configuration parameter
+
+## [0.0.5] - 2025-06-05
+
+- fixes include in jinja template
