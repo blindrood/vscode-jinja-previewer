@@ -70,7 +70,8 @@ export function activate(context: vscode.ExtensionContext) {
             console.log("Jinjer: 📢 Loaded context data:", contextData);
             const templateContent = activeDocument.getText();
 
-            const env = nunjucks.configure({
+            const templateDir = path.dirname(activeDocument.fileName);
+            const env = nunjucks.configure(templateDir, {
                 autoescape: true,
                 trimBlocks: false,
                 lstripBlocks: false
