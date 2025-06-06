@@ -66,12 +66,51 @@ export function activate(context: vscode.ExtensionContext) {
         }
         try {
             console.log("Jinjer: 🔄 Updating preview...");
-            const contextData = await getContextData(activeDocument);
+            const contextData = await getContextData(activeDocument); // Fetches data for the template
             console.log("Jinjer: 📢 Loaded context data:", contextData);
             const templateContent = activeDocument.getText();
 
+            const workspaceFolder = vscode.workspace.getWorkspaceFolder(activeDocument.uri);
+            const workspaceSettings = await getWorkspaceSettings(workspaceFolder?.uri);
+            const globalConfig = vscode.workspace.getConfiguration('jinjer');
+
+            // Determine customSearchPath: workspace > global
+            let customSearchPathSetting: string | string[] | undefined = workspaceSettings.customSearchPath;
+            if (customSearchPathSetting === undefined) {
+                customSearchPathSetting = globalConfig.get<string | string[]>('customSearchPath');
+            }
+
             const templateDir = path.dirname(activeDocument.fileName);
-            const env = nunjucks.configure(templateDir, {
+            let searchPaths: string[] = [templateDir]; // Always include the current file's directory
+
+            if (customSearchPathSetting && workspaceFolder) {
+                const workspaceRootPath = workspaceFolder.uri.fsPath;
+                if (Array.isArray(customSearchPathSetting)) {
+                    const resolvedCustomPaths = customSearchPathSetting.map(p => path.resolve(workspaceRootPath, p));
+                    searchPaths = searchPaths.concat(resolvedCustomPaths);
+                    console.log(`Jinjer: 🛣️ Using custom search paths (resolved from workspace): ${resolvedCustomPaths.join(', ')}`);
+                } else if (typeof customSearchPathSetting === 'string') {
+                    const resolvedCustomPath = path.resolve(workspaceRootPath, customSearchPathSetting);
+                    searchPaths.push(resolvedCustomPath);
+                    console.log(`Jinjer: 🛣️ Using custom search path (resolved from workspace): ${resolvedCustomPath}`);
+                }
+            } else if (customSearchPathSetting) {
+                // If not in a workspace, relative paths might be an issue or interpreted differently.
+                // For now, we'll just use them as is if they are strings/arrays of strings.
+                if (Array.isArray(customSearchPathSetting)) {
+                    searchPaths = searchPaths.concat(customSearchPathSetting);
+                     console.log(`Jinjer: 🛣️ Using custom search paths (global, no workspace): ${customSearchPathSetting.join(', ')}`);
+                } else if (typeof customSearchPathSetting === 'string') {
+                    searchPaths.push(customSearchPathSetting);
+                    console.log(`Jinjer: 🛣️ Using custom search path (global, no workspace): ${customSearchPathSetting}`);
+                }
+            }
+
+            // Remove duplicates
+            searchPaths = [...new Set(searchPaths)];
+            console.log("Jinjer: 🛠️ Nunjucks configured with search paths:", searchPaths);
+
+            const env = nunjucks.configure(searchPaths, {
                 autoescape: true,
                 trimBlocks: false,
                 lstripBlocks: false
@@ -172,11 +211,50 @@ function escapeHtml(content: string): string {
         .replace(/'/g, "&#39;");
 }
 
-async function getContextData(document: vscode.TextDocument): Promise<any> {
-    const config = vscode.workspace.getConfiguration('jinjer');
-    const contextFileName = config.get<string>('contextFile') || ".jinjer.json";
+async function getWorkspaceSettings(workspaceUri: vscode.Uri | undefined): Promise<any> {
+    if (!workspaceUri) {
+        console.log("Jinjer: ℹ️ No workspace folder open, skipping workspace settings.");
+        return {};
+    }
 
-    console.log(`Jinjer: 📂 Looking for context file: ${contextFileName}`);
+    const globalConfig = vscode.workspace.getConfiguration('jinjer');
+    const settingsFileName = globalConfig.get<string>('settingsFile');
+
+    if (!settingsFileName) {
+        console.log("Jinjer: ℹ️ `jinjer.settingsFile` is not set, skipping workspace settings.");
+        return {};
+    }
+
+    const settingsFileUri = vscode.Uri.joinPath(workspaceUri, settingsFileName);
+    console.log(`Jinjer: ⚙️ Looking for workspace settings file: ${settingsFileUri.fsPath}`);
+
+    try {
+        const settingsFileContent = await vscode.workspace.fs.readFile(settingsFileUri);
+        const settingsString = Buffer.from(settingsFileContent).toString('utf8');
+        const workspaceSettings = JSON.parse(settingsString);
+        console.log("Jinjer: ✅ Successfully loaded workspace settings:", workspaceSettings);
+        return workspaceSettings;
+    } catch (error) {
+        if (error instanceof vscode.FileSystemError && error.code === 'FileNotFound') {
+            console.log(`Jinjer: ℹ️ Workspace settings file "${settingsFileName}" not found in workspace root.`);
+        } else {
+            vscode.window.showErrorMessage(`Error reading workspace settings file: ${error}`);
+            console.error("Jinjer: ❌ Error loading workspace settings file:", error);
+        }
+        return {};
+    }
+}
+
+async function getContextData(document: vscode.TextDocument): Promise<any> {
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+    const workspaceSettings = await getWorkspaceSettings(workspaceFolder?.uri);
+
+    const globalConfig = vscode.workspace.getConfiguration('jinjer');
+
+    // Determine contextFile: workspace setting > global setting > default
+    const contextFileName = workspaceSettings.contextFile || globalConfig.get<string>('contextFile') || ".jinjer.json";
+
+    console.log(`Jinjer: 📂 Looking for context file: ${contextFileName} (Workspace settings override: ${!!workspaceSettings.contextFile})`);
 
     const contextFileUri = await findContextFile(document.uri, contextFileName);
 
@@ -206,15 +284,28 @@ async function getContextData(document: vscode.TextDocument): Promise<any> {
     }
 
     // Check and apply variable suffix
-    const variableSuffix = config.get<string>('variableSuffix', "cookiecutter");
-    console.log(`Jinjer: 🔍 Retrieved variableSuffix: "${variableSuffix}"`);
+    // Determine variableSuffix: workspace setting > global setting > default (empty string for no suffix)
+    // Note: The default for variableSuffix in package.json is "", but get() might need a default if it's not explicitly set.
+    // We will ensure that if workspaceSettings.variableSuffix is explicitly an empty string, it is respected.
+    let variableSuffix: string | undefined;
+    if (workspaceSettings.hasOwnProperty('variableSuffix')) {
+        variableSuffix = workspaceSettings.variableSuffix;
+        console.log(`Jinjer: 🔍 Using variableSuffix from workspace settings: "${variableSuffix}"`);
+    } else {
+        variableSuffix = globalConfig.get<string>('variableSuffix');
+        console.log(`Jinjer: 🔍 Using variableSuffix from global settings: "${variableSuffix}"`);
+    }
+
 
     if (variableSuffix) {
         contextData = { [variableSuffix]: contextData };
         console.log("Jinjer: ✅ Applied variable suffix:", contextData);
     } else {
-        console.log("Jinjer: ❌ Suffix not set, using direct context data.");
+        console.log("Jinjer: ℹ️ Variable suffix is empty or not set, using direct context data.");
     }
+
+    // The TODO for customSearchPath was here, but it's handled in updateWebview now
+    // as it's a Nunjucks environment setting, not strictly context data.
 
     return contextData;
 }
