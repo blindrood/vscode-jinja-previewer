@@ -12,29 +12,117 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 let stubs: sinon.SinonStub[] = [];
 let spies: sinon.SinonSpy[] = [];
 
+// Mock Memento for workspaceState and globalState
+class MockMemento implements vscode.Memento {
+    private _storage: Map<string, any> = new Map();
+
+    get<T>(key: string, defaultValue?: T): T | undefined {
+        return this._storage.has(key) ? this._storage.get(key) : defaultValue;
+    }
+    update(key: string, value: any): Thenable<void> {
+        this._storage.set(key, value);
+        return Promise.resolve();
+    }
+    keys(): readonly string[] {
+        return Array.from(this._storage.keys());
+    }
+    // Specific to GlobalMemento, but included here for simplicity if MockMemento is used for globalState
+    setKeysForSync(keys: string[]): void {
+        // console.log('MockMemento: setKeysForSync called with', keys);
+    }
+}
+
 // Mock SecretStorage
 class MockSecretStorage implements vscode.SecretStorage {
     private secrets: Map<string, string> = new Map();
+    private _onDidChange = new vscode.EventEmitter<vscode.SecretStorageChangeEvent>();
+    readonly onDidChange: vscode.Event<vscode.SecretStorageChangeEvent> = this._onDidChange.event;
 
     get(key: string): Thenable<string | undefined> {
         return Promise.resolve(this.secrets.get(key));
     }
     store(key: string, value: string): Thenable<void> {
+        const oldValue = this.secrets.get(key);
         this.secrets.set(key, value);
+        if (oldValue !== value) {
+            this._onDidChange.fire({ key });
+        }
         return Promise.resolve();
     }
     delete(key: string): Thenable<void> {
-        this.secrets.delete(key);
+        if (this.secrets.has(key)) {
+            this.secrets.delete(key);
+            this._onDidChange.fire({ key });
+        }
         return Promise.resolve();
     }
-    onDidChange?: vscode.Event<vscode.SecretStorageChangeEvent> = new vscode.EventEmitter<vscode.SecretStorageChangeEvent>().event;
+}
+
+// Mock EnvironmentVariableCollection
+class MockEnvironmentVariableCollection implements vscode.GlobalEnvironmentVariableCollection { // Implement Global... for ExtensionContext
+    public persistent = false;
+    public description: string | vscode.MarkdownString | undefined = undefined; // Added
+    private _vars: Map<string, { value: string, type: vscode.EnvironmentVariableMutatorType, options: vscode.EnvironmentVariableMutatorOptions }> = new Map();
+
+    private defaultOptions: vscode.EnvironmentVariableMutatorOptions = {
+        applyAtProcessCreation: true, // Or false, provide a sensible default
+        // scope is optional
+    };
+
+    replace(variable: string, value: string, options?: vscode.EnvironmentVariableMutatorOptions): void {
+        this._vars.set(variable, { value, type: vscode.EnvironmentVariableMutatorType.Replace, options: { ...this.defaultOptions, ...options } });
+    }
+    append(variable: string, value: string, options?: vscode.EnvironmentVariableMutatorOptions): void {
+        const existing = this._vars.get(variable);
+        this._vars.set(variable, { value: (existing?.value || '') + value, type: vscode.EnvironmentVariableMutatorType.Append, options: { ...this.defaultOptions, ...existing?.options, ...options } });
+    }
+    prepend(variable: string, value: string, options?: vscode.EnvironmentVariableMutatorOptions): void {
+        const existing = this._vars.get(variable);
+        this._vars.set(variable, { value: value + (existing?.value || ''), type: vscode.EnvironmentVariableMutatorType.Prepend, options: { ...this.defaultOptions, ...existing?.options, ...options } });
+    }
+
+    get(variable: string): vscode.EnvironmentVariableMutator | undefined {
+        const entry = this._vars.get(variable);
+        if (entry) {
+            return { value: entry.value, type: entry.type, options: entry.options }; // Added options
+        }
+        return undefined;
+    }
+
+    forEach(callback: (variable: string, mutator: vscode.EnvironmentVariableMutator, collection: vscode.EnvironmentVariableCollection) => any, thisArg?: any): void {
+        this._vars.forEach((mutator, variable) => {
+            callback.call(thisArg, variable, mutator, this); // mutator now includes options
+        });
+    }
+    delete(variable: string): void { this._vars.delete(variable); }
+    clear(): void { this._vars.clear(); }
+    getScoped(scope: vscode.EnvironmentVariableScope): vscode.EnvironmentVariableCollection { // Added for GlobalEnvironmentVariableCollection
+        // For a simple mock, you might return `this` or a new instance with some scope awareness if needed for tests
+        // console.log('MockEnvironmentVariableCollection.getScoped called with scope:', scope);
+        return this; // Or a more sophisticated scoped mock
+    }
+    [Symbol.iterator](): Iterator<[variable: string, mutator: vscode.EnvironmentVariableMutator]> {
+        const entries = Array.from(this._vars.entries());
+        let index = 0;
+        return {
+            next: () => {
+                if (index < entries.length) {
+                    const [variable, mutator] = entries[index++];
+                    return { value: [variable, mutator] as [string, vscode.EnvironmentVariableMutator], done: false };
+                }
+                return { value: undefined as any, done: true };
+            }
+        };
+    }
 }
 
 // Mock WebviewPanel
 const mockWebviewPanel = {
     webview: {
         html: '',
-        onDidDispose: sinon.stub(),
+        options: {}, // Added
+        onDidReceiveMessage: sinon.stub(), // Added
+        postMessage: sinon.stub().resolves(true), // Added
         asWebviewUri: (uri: vscode.Uri) => uri, // Simple passthrough
         cspSource: '', // Add cspSource property
     },
@@ -50,6 +138,23 @@ const mockWebviewPanel = {
     active: true // Add active property
 };
 
+// Mock LanguageModelAccessInformation
+class MockLanguageModelAccessInformation implements vscode.LanguageModelAccessInformation {
+    private _onDidChange = new vscode.EventEmitter<void>();
+    readonly onDidChange: vscode.Event<void> = this._onDidChange.event; // Added
+
+    get(modelId: string): Thenable<vscode.LanguageModelChat | undefined> { // Changed LanguageModelChatSession2 to LanguageModelChat
+        // console.log(`MockLanguageModelAccessInformation.get called for modelId: ${modelId}`);
+        return Promise.resolve(undefined); // Or mock a LanguageModelChat if needed
+    }
+    // Changed signature to match vscode.LanguageModelAccessInformation
+    canSendRequest(chat: vscode.LanguageModelChat): boolean | undefined {
+        // console.log(`MockLanguageModelAccessInformation.canSendRequest called for chat:`, chat);
+        return false; // Or true, depending on test needs
+    }
+    // request(modelId: string, messages: LanguageModelChatMessage[], options: LanguageModelChatRequestOptions, token: CancellationToken): Thenable<LanguageModelChatResponse>;
+    // sendChatRequest(modelId: string, messages: LanguageModelChatMessage[], options: LanguageModelChatRequestOptions, token: CancellationToken): LanguageModelAsyncChatResponse;
+}
 
 // --- Main Test Suite ---
 suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
@@ -134,13 +239,13 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
         // Activate the extension for each test
         const mockContext: vscode.ExtensionContext = {
             subscriptions: [],
-            workspaceState: { get: sinon.stub(), update: sinon.stub().resolves() } as any,
-            globalState: { get: sinon.stub(), update: sinon.stub().resolves(), setKeysForSync: sinon.stub() } as any,
+            workspaceState: new MockMemento(),
+            globalState: new MockMemento(),
             extensionPath: '/fake/extension/path',
             storagePath: '/fake/storage/path',
             logPath: '/fake/log/path',
             extensionUri: vscode.Uri.file('/fake/extension/path'),
-            environmentVariableCollection: {} as any,
+            environmentVariableCollection: new MockEnvironmentVariableCollection(),
             extensionMode: vscode.ExtensionMode.Test,
             globalStorageUri: vscode.Uri.file('/fake/globalStorage/uri/path'), // Uri for globalStorage
             logUri: vscode.Uri.file('/fake/log/uri/path'),
@@ -161,9 +266,10 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
                 },
                 exports: {},
                 activate: () => Promise.resolve({}), // or mock the actual exports if needed
+                extensionKind: vscode.ExtensionKind.Workspace, // Added: Or vscode.ExtensionKind.UI
                 // Assuming T is 'any' for this mock
             } as vscode.Extension<any>,
-            languageModelAccessInformation: undefined, // Or a mock object if the extension uses this
+            languageModelAccessInformation: new MockLanguageModelAccessInformation(),
         };
         extensionActivate(mockContext); // Activate the extension
     });
