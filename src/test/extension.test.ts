@@ -12,6 +12,24 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 let stubs: sinon.SinonStub[] = [];
 let spies: sinon.SinonSpy[] = [];
 
+// Mock SecretStorage
+class MockSecretStorage implements vscode.SecretStorage {
+    private secrets: Map<string, string> = new Map();
+
+    get(key: string): Thenable<string | undefined> {
+        return Promise.resolve(this.secrets.get(key));
+    }
+    store(key: string, value: string): Thenable<void> {
+        this.secrets.set(key, value);
+        return Promise.resolve();
+    }
+    delete(key: string): Thenable<void> {
+        this.secrets.delete(key);
+        return Promise.resolve();
+    }
+    onDidChange?: vscode.Event<vscode.SecretStorageChangeEvent> = new vscode.EventEmitter<vscode.SecretStorageChangeEvent>().event;
+}
+
 // Mock WebviewPanel
 const mockWebviewPanel = {
     webview: {
@@ -124,10 +142,28 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
             extensionUri: vscode.Uri.file('/fake/extension/path'),
             environmentVariableCollection: {} as any,
             extensionMode: vscode.ExtensionMode.Test,
-            globalStorageUri: vscode.Uri.file('/fake/globalStorage/path'),
-            logUri: vscode.Uri.file('/fake/log/path'),
-            storageUri: vscode.Uri.file('/fake/storage/path'),
+            globalStorageUri: vscode.Uri.file('/fake/globalStorage/uri/path'), // Uri for globalStorage
+            logUri: vscode.Uri.file('/fake/log/uri/path'),
+            storageUri: vscode.Uri.file('/fake/storage/uri/path'), // Uri for workspace storage if extensionKind is Workspace
             asAbsolutePath: (relativePath: string) => path.resolve('/fake/extension/path', relativePath),
+            secrets: new MockSecretStorage(),
+            globalStoragePath: '/fake/globalStorage/path/string', // string path for globalStorage
+            extension: { // Mock vscode.Extension<any>
+                id: 'mock.extension',
+                extensionUri: vscode.Uri.file('/fake/extension/path'),
+                extensionPath: '/fake/extension/path',
+                isActive: true,
+                packageJSON: {
+                    name: 'jinjer',
+                    version: '0.0.0',
+                    publisher: 'MockPublisher',
+                    // other necessary fields from package.json
+                },
+                exports: {},
+                activate: () => Promise.resolve({}), // or mock the actual exports if needed
+                // Assuming T is 'any' for this mock
+            } as vscode.Extension<any>,
+            languageModelAccessInformation: undefined, // Or a mock object if the extension uses this
         };
         extensionActivate(mockContext); // Activate the extension
     });
@@ -185,8 +221,7 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
             stubs[existingStubIndex].restore();
             stubs.splice(existingStubIndex, 1);
         }
-        const activeTextEditorStub = sinon.stub(vscode.window, 'activeTextEditor').value(mockEditor);
-        activeTextEditorStub.displayName = 'activeTextEditorStub'; // For easier debugging
+        const activeTextEditorStub = sinon.stub(vscode.window, 'activeTextEditor').named('activeTextEditorStub').value(mockEditor);
         stubs.push(activeTextEditorStub);
 
 
