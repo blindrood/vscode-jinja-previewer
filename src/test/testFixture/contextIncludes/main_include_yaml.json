@@ -1,0 +1,4 @@
+{
+  "mainJsonVal": "main_json_val",
+  "_jinjer_include_contexts": ["data.yaml"]
+}

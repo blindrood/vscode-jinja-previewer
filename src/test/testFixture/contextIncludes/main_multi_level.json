@@ -1,0 +1,4 @@
+{
+  "mainVal": "main_multi_level_val",
+  "_jinjer_include_contexts": ["level1.json"]
+}

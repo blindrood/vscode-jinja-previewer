@@ -42,6 +42,11 @@
           "type": "string",
           "default": ".jinjer-settings.json",
           "description": "The name of the per-workspace settings file (JSON). This file allows to override global Jinjer settings on a per-workspace basis."
+        },
+        "jinjer.contextIncludeKey": {
+          "type": ["string", "null"],
+          "default": "_jinjer_include_contexts",
+          "description": "The key in context files (JSON/YAML) that specifies an array of other context file paths to include and merge. Paths are relative to the file containing this key. Set to null or empty string to disable."
         }
       }
     }

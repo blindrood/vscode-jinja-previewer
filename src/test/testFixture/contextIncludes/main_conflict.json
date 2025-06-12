@@ -1,0 +1,5 @@
+{
+  "key": "main_conflict_val",
+  "mainOnlyKey": "main_only_val",
+  "_jinjer_include_contexts": ["conflict_source.json"]
+}
