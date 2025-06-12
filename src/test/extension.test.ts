@@ -158,10 +158,11 @@ class MockLanguageModelAccessInformation implements vscode.LanguageModelAccessIn
 
 // --- Main Test Suite ---
 suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
-    let mockGlobalConfig: any;
-    let mockWorkspaceConfig: any;
+    const mockFileContents: Map<string, string> = new Map(); // Initialized
+    const mockGlobalConfig: { [key: string]: any } = {};   // Initialized
+
+    let mockWorkspaceConfig: any; // This is reset in each outer setup, so `let` is fine.
     let mockWorkspaceSettingsContent: string | undefined;
-    let mockFileContents: Map<string, string>; // path -> content
     let mockWorkspaceFolder: vscode.WorkspaceFolder | undefined;
 
     // Spy on nunjucks.configure
@@ -169,11 +170,13 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
 
     setup(() => {
         // Default mock states
-        mockGlobalConfig = {};
+        mockFileContents.clear();
+        Object.keys(mockGlobalConfig).forEach(key => delete mockGlobalConfig[key]);
+        // mockGlobalConfig can be seeded with common defaults here if necessary after clearing
+
         mockWorkspaceConfig = {}; // For workspace-level VS Code settings (distinct from .jinjer-settings.json)
         mockWorkspaceSettingsContent = undefined;
-        mockFileContents = new Map();
-        mockWorkspaceFolder = {
+        mockWorkspaceFolder = { // This is the default for the outer suite; inner suites might override locally
             uri: vscode.Uri.file(path.resolve('/fake/workspace')),
             name: 'FakeWorkspace',
             index: 0
