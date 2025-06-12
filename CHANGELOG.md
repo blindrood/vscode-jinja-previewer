@@ -28,3 +28,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ## [0.0.5] - 2025-06-05
 
 - fixes include in jinja template
+
+## [0.0.7] - 2025-06-12
+
+- fixes bug #3
