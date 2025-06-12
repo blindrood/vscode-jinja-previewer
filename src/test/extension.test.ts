@@ -159,7 +159,7 @@ class MockLanguageModelAccessInformation implements vscode.LanguageModelAccessIn
 // --- Main Test Suite ---
 suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
     const mockFileContents: Map<string, string> = new Map(); // Initialized
-    const mockGlobalConfig: { [key: string]: any } = {};   // Initialized
+    let mockGlobalConfig: { [key: string]: any } = {};   // Changed to let, initialized
 
     let mockWorkspaceConfig: any; // This is reset in each outer setup, so `let` is fine.
     let mockWorkspaceSettingsContent: string | undefined;
@@ -171,8 +171,10 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
     setup(() => {
         // Default mock states
         mockFileContents.clear();
+        // Reset mockGlobalConfig by clearing its properties
         Object.keys(mockGlobalConfig).forEach(key => delete mockGlobalConfig[key]);
         // mockGlobalConfig can be seeded with common defaults here if necessary after clearing
+        // e.g., mockGlobalConfig.settingsFile = '.jinjer-settings.json';
 
         mockWorkspaceConfig = {}; // For workspace-level VS Code settings (distinct from .jinjer-settings.json)
         mockWorkspaceSettingsContent = undefined;
@@ -363,12 +365,12 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
 
         setup(() => {
             // Global settings that should be overridden
-            mockGlobalConfig = {
-                contextFile: 'global.context.json',
-                variableSuffix: 'g',
-                customSearchPath: 'global_includes', // This should be ignored
-                settingsFile: '.jinjer-settings.json' // Important for the test to pick up the file
-            };
+            Object.keys(mockGlobalConfig).forEach(key => delete mockGlobalConfig[key]);
+            mockGlobalConfig.contextFile = 'global.context.json';
+            mockGlobalConfig.variableSuffix = 'g';
+            mockGlobalConfig.customSearchPath = 'global_includes'; // This should be ignored
+            mockGlobalConfig.settingsFile = '.jinjer-settings.json'; // Important for the test to pick up the file
+
             mockFileContents.set(globalContextFilePath, JSON.stringify({ G_data: "From Global Context" }));
 
             // Workspace .jinjer-settings.json
@@ -447,14 +449,13 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
             mockFileContents.delete(path.join(mockWorkspaceFolder!.uri.fsPath, '.jinjer-settings.json'));
 
             // Ensure no relevant global settings
-            mockGlobalConfig = {
-                // settingsFile might be globally defined, but its target .jinjer-settings.json won't exist
-                settingsFile: '.jinjer-settings.json',
-                // Explicitly set others to undefined or ensure they are not in mockGlobalConfig
-                contextFile: undefined,
-                variableSuffix: undefined,
-                customSearchPath: undefined
-            };
+            Object.keys(mockGlobalConfig).forEach(key => delete mockGlobalConfig[key]);
+            // settingsFile might be globally defined, but its target .jinjer-settings.json won't exist
+            mockGlobalConfig.settingsFile = '.jinjer-settings.json';
+            // Explicitly set others to undefined or ensure they are not in mockGlobalConfig
+            mockGlobalConfig.contextFile = undefined;
+            mockGlobalConfig.variableSuffix = undefined;
+            mockGlobalConfig.customSearchPath = undefined;
 
             // Provide the default .jinjer.json context file
             mockFileContents.set(defaultContextFilePath, JSON.stringify({ default_data: "From Default .jinjer.json" }));
@@ -532,7 +533,8 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
 
         setup(() => {
             // Base settings for these tests - other settings like contextFile are not the focus here.
-            mockGlobalConfig = { settingsFile: '.jinjer-settings.json' };
+            Object.keys(mockGlobalConfig).forEach(key => delete mockGlobalConfig[key]);
+            mockGlobalConfig.settingsFile = '.jinjer-settings.json';
             mockFileContents.set(path.join(mockWorkspaceFolder!.uri.fsPath, '.jinjer.json'), JSON.stringify({ msg: "default" })); // Default context
         });
 
@@ -602,12 +604,12 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
             // For this test, explicitly not setting mockFileContents for '.jinjer-settings.json' is key.
 
             // Global settings that should be used
-            mockGlobalConfig = {
-                contextFile: 'global-fallback.context.json',
-                variableSuffix: 'gFallback',
-                customSearchPath: globalSearchPath,
-                settingsFile: '.jinjer-settings.json' // Extension will look for this, but it won't be found
-            };
+            Object.keys(mockGlobalConfig).forEach(key => delete mockGlobalConfig[key]);
+            mockGlobalConfig.contextFile = 'global-fallback.context.json';
+            mockGlobalConfig.variableSuffix = 'gFallback';
+            mockGlobalConfig.customSearchPath = globalSearchPath;
+            mockGlobalConfig.settingsFile = '.jinjer-settings.json'; // Extension will look for this, but it won't be found
+
             mockFileContents.set(globalContextFilePath, JSON.stringify({ GF_data: "From Global Fallback Context" }));
             mockFileContents.set(globalIncludeTemplatePath, "Included Content (Global Fallback Path)");
         });
@@ -753,22 +755,23 @@ suite('Context Inclusion Tests', () => {
     // `spies` array is from the outer suite for centralized cleanup.
 
     beforeEach(() => {
-        // Clear the mockFileContents from the outer suite.
+        // Clear the mockFileContents (from outer scope)
         if (mockFileContents && typeof mockFileContents.clear === 'function') {
             mockFileContents.clear();
         } else {
             // This case should ideally not happen if mockFileContents is correctly from the outer scope.
-            // console.warn("Context Inclusion Tests: Outer mockFileContents not found or not a Map.");
+            console.warn("Context Inclusion Tests beforeEach: mockFileContents not found or not a Map.");
         }
 
-        // Reset relevant parts of the outer mockGlobalConfig, or set defaults for this suite
+        // Reset relevant parts of the outer mockGlobalConfig for this suite's defaults
         if (mockGlobalConfig) {
-            mockGlobalConfig['contextIncludeKey'] = '_jinjer_include_contexts';
-            mockGlobalConfig['contextFile'] = 'context.json'; // Default for most tests
-            mockGlobalConfig['variableSuffix'] = ''; // No suffix by default
+            Object.keys(mockGlobalConfig).forEach(key => delete mockGlobalConfig[key]); // Clear properties first
+            mockGlobalConfig.contextIncludeKey = '_jinjer_include_contexts';
+            mockGlobalConfig.contextFile = 'context.json'; // Default for most tests in this suite
+            mockGlobalConfig.variableSuffix = ''; // No suffix by default for this suite
         } else {
             // This case should ideally not happen.
-            // console.warn("Context Inclusion Tests: Outer mockGlobalConfig not found.");
+            console.warn("Context Inclusion Tests beforeEach: mockGlobalConfig not found.");
         }
     });
 
