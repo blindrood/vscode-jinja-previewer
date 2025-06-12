@@ -646,20 +646,22 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
 
 // --- Suite for Context Inclusion Tests ---
 suite('Context Inclusion Tests', () => {
-    let mockFileContents: Map<string, string>;
-    let mockWorkspaceFolder: vscode.WorkspaceFolder;
+    // REMOVED: let mockFileContents: Map<string, string>;
+    // We will use mockFileContents from the outer suite scope.
+    let mockWorkspaceFolder: vscode.WorkspaceFolder; // This is fine, it's specific to this suite's setup.
     const testFixtureRoot = path.resolve(__dirname, 'testFixture', 'contextIncludes'); // Adjusted path
 
     // Helper to get the URI for a test fixture file
     const getFixtureUri = (fileName: string) => vscode.Uri.file(path.join(testFixtureRoot, fileName));
 
-    // This will hold the original getConfiguration stub
-    let originalGetConfiguration: sinon.SinonStub | undefined;
+    // This will hold the original getConfiguration stub if we were to capture it,
+    // but since we are REMOVING the inner stub, this might not be needed here.
+    // let originalGetConfiguration: sinon.SinonStub | undefined;
 
     setup(async () => {
-        mockFileContents = new Map(); // Reset for each test
-        mockWorkspaceFolder = {
-            uri: vscode.Uri.file(testFixtureRoot), // Base tests out of the contextIncludes directory
+        // mockFileContents is from the outer scope. It will be cleared in beforeEach.
+        mockWorkspaceFolder = { // This mockWorkspaceFolder is specific to this suite's tests
+            uri: vscode.Uri.file(testFixtureRoot),
             name: 'ContextIncludesTestWorkspace',
             index: 0
         };
@@ -687,47 +689,15 @@ suite('Context Inclusion Tests', () => {
         // A better way: the outer suite's `mockFileContents` should be cleared and re-populated here.
         // Or, `setupAndPreview` needs to be adapted, or we create a new `getTestData` that sets up its own mocks for fs.
 
-        // Stubbing getConfiguration specifically for this suite to control jinjer settings
-        // This will override the global one. Remember to restore it.
-        if (vscode.workspace.getConfiguration && (vscode.workspace.getConfiguration as any).isSinonProxy) {
-            originalGetConfiguration = vscode.workspace.getConfiguration as sinon.SinonStub;
-        }
+        // REMOVED: Stubbing of vscode.workspace.getConfiguration from inner suite's setup.
+        // The tests in this suite will rely on the getConfiguration stub from the outer suite,
+        // and will modify the shared mockGlobalConfig in beforeEach or directly in tests.
 
-        stubs.push(sinon.stub(vscode.workspace, 'getConfiguration').callsFake((section) => {
-            if (section === 'jinjer') {
-                // Use a new config object for each call to getConfiguration within this suite
-                // to ensure test isolation for config values.
-                const testSpecificConfig = { ...mockGlobalConfig }; // Start with outer suite's global config
-
-                // Apply defaults or test-specific overrides for context inclusion tests
-                testSpecificConfig['contextIncludeKey'] = testSpecificConfig['contextIncludeKey'] ?? '_jinjer_include_contexts';
-                testSpecificConfig['contextFile'] = testSpecificConfig['contextFile'] ?? 'context.json';
-                testSpecificConfig['variableSuffix'] = testSpecificConfig['variableSuffix'] ?? '';
-
-
-                return {
-                    get: (key: string) => testSpecificConfig[key],
-                    has: (key: string) => key in testSpecificConfig,
-                    inspect: (key: string) => ({
-                        key: `jinjer.${key}`,
-                        globalValue: testSpecificConfig[key],
-                        workspaceValue: undefined, // Not mocking workspace value overrides here yet
-                        defaultValue: undefined
-                    }),
-                    update: sinon.stub().callsFake(async (key: string, value: any) => {
-                        mockGlobalConfig[key] = value; // Update the shared mockGlobalConfig
-                        return Promise.resolve();
-                    })
-                };
-            }
-            // Fallback to original stub for other sections if it was captured
-            if (originalGetConfiguration) {
-                return originalGetConfiguration(section);
-            }
-            // Default fallback if originalGetConfiguration was not captured (e.g. first run)
-            return { get: sinon.stub().returns(undefined), has: sinon.stub().returns(false), inspect: sinon.stub().returns(undefined), update: sinon.stub().resolves() } as any;
-        }));
-
+        // The following stubs for activeTextEditor and getWorkspaceFolder are also potentially
+        // redundant if the outer suite's setup is sufficient and mockWorkspaceFolder is
+        // updated correctly for this suite's context.
+        // For now, these are kept as they might be providing suite-specific behavior for these elements.
+        // However, they also push to the global `stubs` array.
 
         // Populate mockFileContents with actual files from the testFixture directory
         // This is crucial. The tests will rely on `fs.readFile` stub to provide these.
@@ -757,14 +727,12 @@ suite('Context Inclusion Tests', () => {
     });
 
     teardown(async () => {
-        // Restore specific stubs for this suite
-        stubs.forEach(s => s.restore()); // This might be too broad if outer suite stubs are in same array
-        stubs = []; // Clear local stubs list
-        if (originalGetConfiguration) {
-            (vscode.workspace.getConfiguration as sinon.SinonStub).restore(); // Restore original stub
-            originalGetConfiguration = undefined;
-        }
-        // Clean up global config updates if any were made directly
+        // The stubs pushed by this suite's setup (if any remain) and by individual tests
+        // (e.g. path.isAbsolute stub, console.warn spy) are added to the global `stubs` and `spies`
+        // arrays, which are cleaned by the outer suite's teardown. So, no specific teardown
+        // for stubs is needed here if that system works as intended.
+
+        // Clean up global config updates specifically made by this suite's tests/beforeEach
         await vscode.workspace.getConfiguration('jinjer').update('contextIncludeKey', undefined, vscode.ConfigurationTarget.Global);
         await vscode.workspace.getConfiguration('jinjer').update('contextFile', undefined, vscode.ConfigurationTarget.Global);
     });
@@ -782,23 +750,22 @@ suite('Context Inclusion Tests', () => {
     // `spies` array is from the outer suite for centralized cleanup.
 
     beforeEach(() => {
-        // Clear mock file contents before each test in this suite
-        // This assumes `mockFileContents` is the map used by the global `readFile` and `stat` stubs
-        if (globalThis.mockFileContents && typeof globalThis.mockFileContents.clear === 'function') {
-            globalThis.mockFileContents.clear();
-        } else if (mockFileContents && typeof mockFileContents.clear === 'function') {
-            // If mockFileContents is scoped to this file (as it appears to be in the provided code)
+        // Clear the mockFileContents from the outer suite.
+        if (mockFileContents && typeof mockFileContents.clear === 'function') {
             mockFileContents.clear();
+        } else {
+            // This case should ideally not happen if mockFileContents is correctly from the outer scope.
+            // console.warn("Context Inclusion Tests: Outer mockFileContents not found or not a Map.");
         }
-        // Reset relevant parts of global config, or set defaults for this suite
-        if (globalThis.mockGlobalConfig) {
-            globalThis.mockGlobalConfig['contextIncludeKey'] = '_jinjer_include_contexts';
-            globalThis.mockGlobalConfig['contextFile'] = 'context.json'; // Default for most tests
-            globalThis.mockGlobalConfig['variableSuffix'] = ''; // No suffix by default
-        } else if (mockGlobalConfig) {
+
+        // Reset relevant parts of the outer mockGlobalConfig, or set defaults for this suite
+        if (mockGlobalConfig) {
             mockGlobalConfig['contextIncludeKey'] = '_jinjer_include_contexts';
-            mockGlobalConfig['contextFile'] = 'context.json';
-            mockGlobalConfig['variableSuffix'] = '';
+            mockGlobalConfig['contextFile'] = 'context.json'; // Default for most tests
+            mockGlobalConfig['variableSuffix'] = ''; // No suffix by default
+        } else {
+            // This case should ideally not happen.
+            // console.warn("Context Inclusion Tests: Outer mockGlobalConfig not found.");
         }
     });
 
