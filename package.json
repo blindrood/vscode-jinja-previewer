@@ -46,7 +46,7 @@
         "jinjer.contextIncludeKey": {
           "type": ["string", "null"],
           "default": "_jinjer_include_contexts",
-          "description": "The key in context files (JSON/YAML) that specifies an array of other context file paths to include and merge. Paths are relative to the file containing this key. Set to null or empty string to disable."
+          "description": "The key in context files (JSON/YAML) that specifies an array of other context file paths to include and merge. Paths are relative to the file containing this key. Set to null or empty string to disable. This VS Code setting can be overridden for a specific workspace by defining `contextIncludeKey` (using the same value types) in the `.jinjer-settings.json` file."
         }
       }
     }

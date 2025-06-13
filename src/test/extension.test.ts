@@ -167,6 +167,7 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
 
     // Spy on nunjucks.configure
     let nunjucksConfigureSpy: sinon.SinonSpy;
+    let renderStringSpy: sinon.SinonSpy; // Declare renderStringSpy in the outer suite
 
     setup(() => {
         // Default mock states
@@ -233,6 +234,10 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
         // Spy on nunjucks.configure - ensure it's reset for each test
         nunjucksConfigureSpy = sinon.spy(nunjucks, 'configure');
         spies.push(nunjucksConfigureSpy);
+
+        // Spy on nunjucks.Environment.prototype.renderString - ensure it's reset for each test
+        renderStringSpy = sinon.spy(nunjucks.Environment.prototype, 'renderString');
+        spies.push(renderStringSpy);
 
         // Reset the panel's HTML content before each test
         mockWebviewPanel.webview.html = '';
@@ -437,6 +442,94 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
                 Array.isArray(configureArgs) && !configureArgs.includes(globalPathToAvoid),
                 `Nunjucks configure args included global search path when it should have been overridden. Got: ${JSON.stringify(configureArgs)}`
             );
+        });
+
+        test('Should use contextIncludeKey from .jinjer-settings.json, overriding VSCode settings', async () => {
+            // Set a VS Code setting for contextIncludeKey
+            mockGlobalConfig.contextIncludeKey = '_vscode_key_';
+
+            // Define .jinjer-settings.json content with a different contextIncludeKey
+            const wsSettingsValues = {
+                contextFile: 'ws_ctx_for_include_key_override.json',
+                variableSuffix: 'ws',
+                customSearchPath: 'includes',
+                contextIncludeKey: '_ws_override_key_' // The override from .jinjer-settings.json
+            };
+            mockFileContents.set(workspaceSettingsFilePath, JSON.stringify(wsSettingsValues));
+
+            // Define main context file and included file using the _ws_override_key_
+            const mainContextContent = {
+                "mainVal": "mainDataValue",
+                "_ws_override_key_": ["included_by_ws_key.json"]
+            };
+            const includedContextContent = { "incVal": "dataFromWsOverride" };
+
+            const mainContextPath = path.join(mockWorkspaceFolder!.uri.fsPath, wsSettingsValues.contextFile);
+            mockFileContents.set(mainContextPath, JSON.stringify(mainContextContent));
+            mockFileContents.set(path.join(mockWorkspaceFolder!.uri.fsPath, 'included_by_ws_key.json'), JSON.stringify(includedContextContent));
+
+            await setupAndPreview('Template: {{ ws.mainVal }} - {{ ws.incVal }}', 'template_ws_key_override.j2');
+
+            const contextSentToNunjucks = renderStringSpy.lastCall.args[1];
+            assert.strictEqual(contextSentToNunjucks.ws.mainVal, "mainDataValue", "Test 1: Main value mismatch");
+            assert.strictEqual(contextSentToNunjucks.ws.incVal, "dataFromWsOverride", "Test 1: Included value mismatch - .jinjer-settings.json key override failed");
+        });
+
+        test('Should use VSCode contextIncludeKey if not set in .jinjer-settings.json', async () => {
+            mockGlobalConfig.contextIncludeKey = '_vscode_key_for_fallback_';
+
+            const wsSettingsValues = {
+                contextFile: 'ws_ctx_for_vscode_key_fallback.json',
+                variableSuffix: 'ws',
+                customSearchPath: 'includes'
+                // No contextIncludeKey here
+            };
+            mockFileContents.set(workspaceSettingsFilePath, JSON.stringify(wsSettingsValues));
+
+            const mainContextContent = {
+                "mainVal": "mainDataValue2",
+                "_vscode_key_for_fallback_": ["included_by_vscode_key.json"]
+            };
+            const includedContextContent = { "incVal": "dataFromVSCodeKeyFallback" };
+
+            const mainContextPath = path.join(mockWorkspaceFolder!.uri.fsPath, wsSettingsValues.contextFile);
+            mockFileContents.set(mainContextPath, JSON.stringify(mainContextContent));
+            mockFileContents.set(path.join(mockWorkspaceFolder!.uri.fsPath, 'included_by_vscode_key.json'), JSON.stringify(includedContextContent));
+
+            await setupAndPreview('Template: {{ ws.mainVal }} - {{ ws.incVal }}', 'template_vscode_key_fallback.j2');
+
+            const contextSentToNunjucks = renderStringSpy.lastCall.args[1];
+            assert.strictEqual(contextSentToNunjucks.ws.mainVal, "mainDataValue2", "Test 2: Main value mismatch");
+            assert.strictEqual(contextSentToNunjucks.ws.incVal, "dataFromVSCodeKeyFallback", "Test 2: Included value mismatch - VSCode key fallback failed");
+        });
+
+        test('Should use default contextIncludeKey if not in .jinjer-settings.json or VSCode settings', async () => {
+            delete mockGlobalConfig.contextIncludeKey;
+
+            const wsSettingsValues = {
+                contextFile: 'ws_ctx_for_default_key_fallback.json',
+                variableSuffix: 'ws',
+                customSearchPath: 'includes'
+                // No contextIncludeKey here
+            };
+            mockFileContents.set(workspaceSettingsFilePath, JSON.stringify(wsSettingsValues));
+
+            const packageDefaultKey = "_jinjer_include_contexts";
+            const mainContextContent = {
+                "mainVal": "mainDataValue3",
+                [packageDefaultKey]: ["included_by_default_key.json"]
+            };
+            const includedContextContent = { "incVal": "dataFromDefaultKey" };
+
+            const mainContextPath = path.join(mockWorkspaceFolder!.uri.fsPath, wsSettingsValues.contextFile);
+            mockFileContents.set(mainContextPath, JSON.stringify(mainContextContent));
+            mockFileContents.set(path.join(mockWorkspaceFolder!.uri.fsPath, 'included_by_default_key.json'), JSON.stringify(includedContextContent));
+
+            await setupAndPreview('Template: {{ ws.mainVal }} - {{ ws.incVal }}', 'template_default_key_fallback.j2');
+
+            const contextSentToNunjucks = renderStringSpy.lastCall.args[1];
+            assert.strictEqual(contextSentToNunjucks.ws.mainVal, "mainDataValue3", "Test 3: Main value mismatch");
+            assert.strictEqual(contextSentToNunjucks.ws.incVal, "dataFromDefaultKey", "Test 3: Included value mismatch - package.json default key fallback failed");
         });
     });
 

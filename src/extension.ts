@@ -250,7 +250,17 @@ async function getContextData(document: vscode.TextDocument): Promise<any> {
     const workspaceSettings = await getWorkspaceSettings(workspaceFolder?.uri);
 
     const globalConfig = vscode.workspace.getConfiguration('jinjer');
-    const contextIncludeKey = globalConfig.get<string | null>('contextIncludeKey');
+    // const contextIncludeKey = globalConfig.get<string | null>('contextIncludeKey'); // Old way
+
+    // Determine effective contextIncludeKey: .jinjer-settings.json > VS Code settings > default
+    let effectiveContextIncludeKey: string | null | undefined;
+    if (workspaceSettings.hasOwnProperty('contextIncludeKey')) {
+        effectiveContextIncludeKey = workspaceSettings.contextIncludeKey;
+        console.log(`Jinjer: 🔑 Using contextIncludeKey from .jinjer-settings.json: "${effectiveContextIncludeKey}"`);
+    } else {
+        effectiveContextIncludeKey = globalConfig.get<string | null>('contextIncludeKey');
+        console.log(`Jinjer: 🔑 Using contextIncludeKey from VS Code settings (or default): "${effectiveContextIncludeKey}"`);
+    }
 
     // Determine contextFile: workspace setting > global setting > default
     const contextFileName = workspaceSettings.contextFile || globalConfig.get<string>('contextFile') || ".jinjer.json";
@@ -268,7 +278,7 @@ async function getContextData(document: vscode.TextDocument): Promise<any> {
     try {
         // Initialize processedPaths for the top-level call
         const processedPaths = new Set<string>();
-        contextData = await loadContextRecursive(contextFileUri, contextIncludeKey, processedPaths, workspaceFolder?.uri);
+        contextData = await loadContextRecursive(contextFileUri, effectiveContextIncludeKey, processedPaths, workspaceFolder?.uri);
         console.log("Jinjer: ✅ Successfully loaded and merged context data:", contextData);
     } catch (error) {
         vscode.window.showErrorMessage(`Error loading context data: ${error}`);

@@ -41,7 +41,7 @@ You can configure the following settings directly in your VS Code `settings.json
   * Description: Defines the name of the JSON file to be used for per-workspace Jinjer settings. This file allows for more granular, project-specific configurations that can be version-controlled.
   * Default: `".jinjer-settings.json"`
 * **`jinjer.contextIncludeKey`**:
-  * Description: Specifies a key within your JSON/YAML context files that lists other context files to be included and merged. Paths are resolved relative to the file containing this key, or can be absolute. Set to a string like `"_jinjer_include_contexts"` (default) or `null`/empty string to disable.
+  * Description: Specifies a key within your JSON/YAML context files that lists other context files to be included and merged. Paths are resolved relative to the file containing this key, or can be absolute. Set to a string like `"_jinjer_include_contexts"` (default) or `null`/empty string to disable. This setting can also be specified in a `.jinjer-settings.json` file within your workspace, and the value in `.jinjer-settings.json` will take precedence.
   * Default: `"_jinjer_include_contexts"`
 
 ### Per-Workspace Settings File
@@ -63,6 +63,10 @@ This JSON file can contain the following properties:
   * Description: A path or an array of paths (relative to the workspace root) where Nunjucks should look for templates during `{% include %}`, `{% extends %}`, or `{% import %}` operations. These paths are added to Nunjucks's search list. This overrides the `jinjer.customSearchPath` from VS Code settings.
   * Example (single path): `"templates/includes"`
   * Example (multiple paths): `["includes/", "shared_components/jinja"]`
+* **`contextIncludeKey`**:
+  * Type: `string | null`
+  * Description: Specifies the key name within context files that holds an array of other context file paths to include and merge. Paths are relative to the file containing this key, or can be absolute. Setting to `null` or an empty string disables the include feature for contexts loaded via this workspace settings file. This overrides the `jinjer.contextIncludeKey` from VS Code's global or user/workspace settings.
+  * Example: `"_custom_includes_key"` or `null`
 
 #### Example `.jinjer-settings.json`
 
@@ -73,7 +77,8 @@ This JSON file can contain the following properties:
   "customSearchPath": [
     "src/templates/includes",
     "src/templates/layouts"
-  ]
+  ],
+  "contextIncludeKey": "_another_include_key"
 }
 ```
 
