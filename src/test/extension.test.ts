@@ -158,22 +158,28 @@ class MockLanguageModelAccessInformation implements vscode.LanguageModelAccessIn
 
 // --- Main Test Suite ---
 suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
-    let mockGlobalConfig: any;
-    let mockWorkspaceConfig: any;
+    const mockFileContents: Map<string, string> = new Map(); // Initialized
+    let mockGlobalConfig: { [key: string]: any } = {};   // Changed to let, initialized
+
+    let mockWorkspaceConfig: any; // This is reset in each outer setup, so `let` is fine.
     let mockWorkspaceSettingsContent: string | undefined;
-    let mockFileContents: Map<string, string>; // path -> content
     let mockWorkspaceFolder: vscode.WorkspaceFolder | undefined;
 
     // Spy on nunjucks.configure
     let nunjucksConfigureSpy: sinon.SinonSpy;
+    let renderStringSpy: sinon.SinonSpy; // Declare renderStringSpy in the outer suite
 
     setup(() => {
         // Default mock states
-        mockGlobalConfig = {};
+        mockFileContents.clear();
+        // Reset mockGlobalConfig by clearing its properties
+        Object.keys(mockGlobalConfig).forEach(key => delete mockGlobalConfig[key]);
+        // mockGlobalConfig can be seeded with common defaults here if necessary after clearing
+        // e.g., mockGlobalConfig.settingsFile = '.jinjer-settings.json';
+
         mockWorkspaceConfig = {}; // For workspace-level VS Code settings (distinct from .jinjer-settings.json)
         mockWorkspaceSettingsContent = undefined;
-        mockFileContents = new Map();
-        mockWorkspaceFolder = {
+        mockWorkspaceFolder = { // This is the default for the outer suite; inner suites might override locally
             uri: vscode.Uri.file(path.resolve('/fake/workspace')),
             name: 'FakeWorkspace',
             index: 0
@@ -228,6 +234,10 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
         // Spy on nunjucks.configure - ensure it's reset for each test
         nunjucksConfigureSpy = sinon.spy(nunjucks, 'configure');
         spies.push(nunjucksConfigureSpy);
+
+        // Spy on nunjucks.Environment.prototype.renderString - ensure it's reset for each test
+        renderStringSpy = sinon.spy(nunjucks.Environment.prototype, 'renderString');
+        spies.push(renderStringSpy);
 
         // Reset the panel's HTML content before each test
         mockWebviewPanel.webview.html = '';
@@ -360,12 +370,12 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
 
         setup(() => {
             // Global settings that should be overridden
-            mockGlobalConfig = {
-                contextFile: 'global.context.json',
-                variableSuffix: 'g',
-                customSearchPath: 'global_includes', // This should be ignored
-                settingsFile: '.jinjer-settings.json' // Important for the test to pick up the file
-            };
+            Object.keys(mockGlobalConfig).forEach(key => delete mockGlobalConfig[key]);
+            mockGlobalConfig.contextFile = 'global.context.json';
+            mockGlobalConfig.variableSuffix = 'g';
+            mockGlobalConfig.customSearchPath = 'global_includes'; // This should be ignored
+            mockGlobalConfig.settingsFile = '.jinjer-settings.json'; // Important for the test to pick up the file
+
             mockFileContents.set(globalContextFilePath, JSON.stringify({ G_data: "From Global Context" }));
 
             // Workspace .jinjer-settings.json
@@ -433,6 +443,94 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
                 `Nunjucks configure args included global search path when it should have been overridden. Got: ${JSON.stringify(configureArgs)}`
             );
         });
+
+        test('Should use contextIncludeKey from .jinjer-settings.json, overriding VSCode settings', async () => {
+            // Set a VS Code setting for contextIncludeKey
+            mockGlobalConfig.contextIncludeKey = '_vscode_key_';
+
+            // Define .jinjer-settings.json content with a different contextIncludeKey
+            const wsSettingsValues = {
+                contextFile: 'ws_ctx_for_include_key_override.json',
+                variableSuffix: 'ws',
+                customSearchPath: 'includes',
+                contextIncludeKey: '_ws_override_key_' // The override from .jinjer-settings.json
+            };
+            mockFileContents.set(workspaceSettingsFilePath, JSON.stringify(wsSettingsValues));
+
+            // Define main context file and included file using the _ws_override_key_
+            const mainContextContent = {
+                "mainVal": "mainDataValue",
+                "_ws_override_key_": ["included_by_ws_key.json"]
+            };
+            const includedContextContent = { "incVal": "dataFromWsOverride" };
+
+            const mainContextPath = path.join(mockWorkspaceFolder!.uri.fsPath, wsSettingsValues.contextFile);
+            mockFileContents.set(mainContextPath, JSON.stringify(mainContextContent));
+            mockFileContents.set(path.join(mockWorkspaceFolder!.uri.fsPath, 'included_by_ws_key.json'), JSON.stringify(includedContextContent));
+
+            await setupAndPreview('Template: {{ ws.mainVal }} - {{ ws.incVal }}', 'template_ws_key_override.j2');
+
+            const contextSentToNunjucks = renderStringSpy.lastCall.args[1];
+            assert.strictEqual(contextSentToNunjucks.ws.mainVal, "mainDataValue", "Test 1: Main value mismatch");
+            assert.strictEqual(contextSentToNunjucks.ws.incVal, "dataFromWsOverride", "Test 1: Included value mismatch - .jinjer-settings.json key override failed");
+        });
+
+        test('Should use VSCode contextIncludeKey if not set in .jinjer-settings.json', async () => {
+            mockGlobalConfig.contextIncludeKey = '_vscode_key_for_fallback_';
+
+            const wsSettingsValues = {
+                contextFile: 'ws_ctx_for_vscode_key_fallback.json',
+                variableSuffix: 'ws',
+                customSearchPath: 'includes'
+                // No contextIncludeKey here
+            };
+            mockFileContents.set(workspaceSettingsFilePath, JSON.stringify(wsSettingsValues));
+
+            const mainContextContent = {
+                "mainVal": "mainDataValue2",
+                "_vscode_key_for_fallback_": ["included_by_vscode_key.json"]
+            };
+            const includedContextContent = { "incVal": "dataFromVSCodeKeyFallback" };
+
+            const mainContextPath = path.join(mockWorkspaceFolder!.uri.fsPath, wsSettingsValues.contextFile);
+            mockFileContents.set(mainContextPath, JSON.stringify(mainContextContent));
+            mockFileContents.set(path.join(mockWorkspaceFolder!.uri.fsPath, 'included_by_vscode_key.json'), JSON.stringify(includedContextContent));
+
+            await setupAndPreview('Template: {{ ws.mainVal }} - {{ ws.incVal }}', 'template_vscode_key_fallback.j2');
+
+            const contextSentToNunjucks = renderStringSpy.lastCall.args[1];
+            assert.strictEqual(contextSentToNunjucks.ws.mainVal, "mainDataValue2", "Test 2: Main value mismatch");
+            assert.strictEqual(contextSentToNunjucks.ws.incVal, "dataFromVSCodeKeyFallback", "Test 2: Included value mismatch - VSCode key fallback failed");
+        });
+
+        test('Should use default contextIncludeKey if not in .jinjer-settings.json or VSCode settings', async () => {
+            delete mockGlobalConfig.contextIncludeKey;
+
+            const wsSettingsValues = {
+                contextFile: 'ws_ctx_for_default_key_fallback.json',
+                variableSuffix: 'ws',
+                customSearchPath: 'includes'
+                // No contextIncludeKey here
+            };
+            mockFileContents.set(workspaceSettingsFilePath, JSON.stringify(wsSettingsValues));
+
+            const packageDefaultKey = "_jinjer_include_contexts";
+            const mainContextContent = {
+                "mainVal": "mainDataValue3",
+                [packageDefaultKey]: ["included_by_default_key.json"]
+            };
+            const includedContextContent = { "incVal": "dataFromDefaultKey" };
+
+            const mainContextPath = path.join(mockWorkspaceFolder!.uri.fsPath, wsSettingsValues.contextFile);
+            mockFileContents.set(mainContextPath, JSON.stringify(mainContextContent));
+            mockFileContents.set(path.join(mockWorkspaceFolder!.uri.fsPath, 'included_by_default_key.json'), JSON.stringify(includedContextContent));
+
+            await setupAndPreview('Template: {{ ws.mainVal }} - {{ ws.incVal }}', 'template_default_key_fallback.j2');
+
+            const contextSentToNunjucks = renderStringSpy.lastCall.args[1];
+            assert.strictEqual(contextSentToNunjucks.ws.mainVal, "mainDataValue3", "Test 3: Main value mismatch");
+            assert.strictEqual(contextSentToNunjucks.ws.incVal, "dataFromDefaultKey", "Test 3: Included value mismatch - package.json default key fallback failed");
+        });
     });
 
     suite('4. No Settings File and No Global Config (Defaults)', () => {
@@ -444,14 +542,13 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
             mockFileContents.delete(path.join(mockWorkspaceFolder!.uri.fsPath, '.jinjer-settings.json'));
 
             // Ensure no relevant global settings
-            mockGlobalConfig = {
-                // settingsFile might be globally defined, but its target .jinjer-settings.json won't exist
-                settingsFile: '.jinjer-settings.json',
-                // Explicitly set others to undefined or ensure they are not in mockGlobalConfig
-                contextFile: undefined,
-                variableSuffix: undefined,
-                customSearchPath: undefined
-            };
+            Object.keys(mockGlobalConfig).forEach(key => delete mockGlobalConfig[key]);
+            // settingsFile might be globally defined, but its target .jinjer-settings.json won't exist
+            mockGlobalConfig.settingsFile = '.jinjer-settings.json';
+            // Explicitly set others to undefined or ensure they are not in mockGlobalConfig
+            mockGlobalConfig.contextFile = undefined;
+            mockGlobalConfig.variableSuffix = undefined;
+            mockGlobalConfig.customSearchPath = undefined;
 
             // Provide the default .jinjer.json context file
             mockFileContents.set(defaultContextFilePath, JSON.stringify({ default_data: "From Default .jinjer.json" }));
@@ -529,7 +626,8 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
 
         setup(() => {
             // Base settings for these tests - other settings like contextFile are not the focus here.
-            mockGlobalConfig = { settingsFile: '.jinjer-settings.json' };
+            Object.keys(mockGlobalConfig).forEach(key => delete mockGlobalConfig[key]);
+            mockGlobalConfig.settingsFile = '.jinjer-settings.json';
             mockFileContents.set(path.join(mockWorkspaceFolder!.uri.fsPath, '.jinjer.json'), JSON.stringify({ msg: "default" })); // Default context
         });
 
@@ -599,12 +697,12 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
             // For this test, explicitly not setting mockFileContents for '.jinjer-settings.json' is key.
 
             // Global settings that should be used
-            mockGlobalConfig = {
-                contextFile: 'global-fallback.context.json',
-                variableSuffix: 'gFallback',
-                customSearchPath: globalSearchPath,
-                settingsFile: '.jinjer-settings.json' // Extension will look for this, but it won't be found
-            };
+            Object.keys(mockGlobalConfig).forEach(key => delete mockGlobalConfig[key]);
+            mockGlobalConfig.contextFile = 'global-fallback.context.json';
+            mockGlobalConfig.variableSuffix = 'gFallback';
+            mockGlobalConfig.customSearchPath = globalSearchPath;
+            mockGlobalConfig.settingsFile = '.jinjer-settings.json'; // Extension will look for this, but it won't be found
+
             mockFileContents.set(globalContextFilePath, JSON.stringify({ GF_data: "From Global Fallback Context" }));
             mockFileContents.set(globalIncludeTemplatePath, "Included Content (Global Fallback Path)");
         });
@@ -643,3 +741,582 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
     });
 
 });
+
+// --- Suite for Context Inclusion Tests (NEW, ISOLATED SETUP) ---
+suite('Context Inclusion Tests (New)', () => {
+    let testSuiteStubs: sinon.SinonStub[] = [];
+    let testSuiteSpies: sinon.SinonSpy[] = [];
+    const mockFileContents = new Map<string, string>();
+    const mockJinjerConfig: { [key: string]: any } = {};
+    let mockWorkspaceFolder: vscode.WorkspaceFolder;
+    const testFixtureRoot = path.resolve(__dirname, 'testFixture', 'contextIncludes');
+    const getFixtureUri = (fileName: string) => vscode.Uri.file(path.join(testFixtureRoot, fileName));
+    let activeTextEditorStub: sinon.SinonStub | undefined = undefined;
+
+    // Spies that will be initialized in beforeEach and used by tests
+    let renderStringSpy: sinon.SinonSpy;
+    let consoleWarnSpy: sinon.SinonSpy;
+    let nunjucksConfigureSpy: sinon.SinonSpy;
+
+    beforeEach(async () => {
+        mockFileContents.clear();
+        Object.keys(mockJinjerConfig).forEach(key => delete mockJinjerConfig[key]);
+        // Set default configurations for this suite
+        mockJinjerConfig.contextIncludeKey = '_jinjer_include_contexts';
+        mockJinjerConfig.contextFile = 'context.json'; // Default for most tests
+        mockJinjerConfig.variableSuffix = '';
+
+        mockWorkspaceFolder = {
+            uri: vscode.Uri.file(testFixtureRoot),
+            name: 'ContextIncludesTestWorkspace',
+            index: 0
+        };
+
+        // Stub vscode.workspace.getConfiguration
+        const getConfigurationStub = sinon.stub(vscode.workspace, 'getConfiguration').callsFake((section) => {
+            if (section === 'jinjer') {
+                return {
+                    get: (key: string) => mockJinjerConfig[key],
+                    has: (key: string) => key in mockJinjerConfig,
+                    inspect: (key: string) => ({ key: `jinjer.${key}`, globalValue: mockJinjerConfig[key], defaultValue: undefined, workspaceValue: undefined, globalLanguageValue: undefined, workspaceFolderValue: undefined, workspaceFolderLanguageValue: undefined, languageIds: undefined}),
+                    update: sinon.stub().callsFake(async (key:string, value:any) => { mockJinjerConfig[key] = value; return Promise.resolve(); }) // Basic stub for update
+                };
+            }
+            // IMPORTANT: For non-'jinjer' sections, call the original function if possible,
+            // or return a generic stub. This prevents breaking other parts of VS Code a test might touch.
+            // However, in a focused unit test, you might only care about your section.
+            // For this self-contained suite, we might need to ensure other configurations are not touched
+            // or are handled by a broader mechanism if tests interact with them.
+            // Returning a generic stub for non-jinjer sections:
+            return {
+                get: sinon.stub().returns(undefined),
+                has: sinon.stub().returns(false),
+                inspect: sinon.stub().returns(undefined),
+                update: sinon.stub().resolves()
+            } as any;
+        });
+        testSuiteStubs.push(getConfigurationStub);
+
+        // Stub vscode.workspace.fs.readFile
+        const readFileStub = sinon.stub(vscode.workspace.fs, 'readFile').callsFake(async (uri: vscode.Uri) => {
+            const filePath = uri.fsPath;
+            if (mockFileContents.has(filePath)) {
+                return Buffer.from(mockFileContents.get(filePath)!);
+            }
+            throw vscode.FileSystemError.FileNotFound(uri);
+        });
+        testSuiteStubs.push(readFileStub);
+
+        // Stub vscode.workspace.fs.stat
+        const statStub = sinon.stub(vscode.workspace.fs, 'stat').callsFake(async (uri: vscode.Uri) => {
+            const filePath = uri.fsPath;
+            // Check if it's the specific workspace folder URI for directory type
+            if (filePath === mockWorkspaceFolder.uri.fsPath) {
+                return {
+                    type: vscode.FileType.Directory,
+                    size: 0,
+                    mtime: Date.now(),
+                    ctime: Date.now()
+                } as vscode.FileStat;
+            }
+            // Check if it's a file in our mock file system
+            if (mockFileContents.has(filePath)) {
+                return {
+                    type: vscode.FileType.File,
+                    size: mockFileContents.get(filePath)?.length || 0,
+                    mtime: Date.now(),
+                    ctime: Date.now()
+                } as vscode.FileStat;
+            }
+            // For any other path, including subdirectories that are not explicitly defined,
+            // throw FileNotFound unless we add more sophisticated directory mocking.
+            // For context inclusion, we mostly care about specific files existing.
+            // If a directory needs to exist for path.dirname to work, stat might be called on it.
+            // For simplicity, let's assume only files or the root workspace folder are stat-ed.
+            // If a test needs a directory to exist, it should be mocked in mockFileContents with a special value,
+            // or this stub needs to be smarter. For now, this is typical for file-based ops.
+            throw vscode.FileSystemError.FileNotFound(uri);
+        });
+        testSuiteStubs.push(statStub);
+
+        // Stub vscode.workspace.getWorkspaceFolder
+        const getWorkspaceFolderStub = sinon.stub(vscode.workspace, 'getWorkspaceFolder').returns(mockWorkspaceFolder);
+        testSuiteStubs.push(getWorkspaceFolderStub);
+
+        // Stub vscode.window.activeTextEditor
+        const dummyDocUri = vscode.Uri.joinPath(mockWorkspaceFolder.uri, 'dummy_template_new.j2');
+        const mockEditor = {
+            document: { uri: dummyDocUri, fileName: dummyDocUri.fsPath, getText: () => "" }
+        };
+        if (activeTextEditorStub && typeof activeTextEditorStub.restore === 'function') {
+            activeTextEditorStub.restore(); // Restore if it was stubbed in a previous test run by this suite
+        }
+        activeTextEditorStub = sinon.stub(vscode.window, 'activeTextEditor').returns(mockEditor as any);
+        testSuiteStubs.push(activeTextEditorStub);
+
+        // Stub vscode.window.createWebviewPanel
+        // Using the global mockWebviewPanel defined at the top of the file.
+        const createWebviewPanelStub = sinon.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+        testSuiteStubs.push(createWebviewPanelStub);
+
+        // Stub console.warn
+        consoleWarnSpy = sinon.spy(console, 'warn'); // Assign to suite-level variable
+        testSuiteSpies.push(consoleWarnSpy);
+
+        // Spy on nunjucks.Environment.prototype.renderString
+        renderStringSpy = sinon.spy(nunjucks.Environment.prototype, 'renderString'); // Assign to suite-level variable
+        testSuiteSpies.push(renderStringSpy);
+
+        // Spy on nunjucks.configure
+        nunjucksConfigureSpy = sinon.spy(nunjucks, 'configure'); // Assign to suite-level variable
+        testSuiteSpies.push(nunjucksConfigureSpy);
+
+        // Activate the extension
+        const mockMemento = new MockMemento(); // Using the class defined at the top
+        const mockContext: vscode.ExtensionContext = {
+            subscriptions: [], workspaceState: mockMemento, globalState: mockMemento,
+            extensionPath: '/fake/path_new_suite', storagePath: '/fake/storage_new', logPath: '/fake/log_new', extensionUri: vscode.Uri.file('/fake_new_suite'),
+            environmentVariableCollection: new MockEnvironmentVariableCollection(), extensionMode: vscode.ExtensionMode.Test,
+            globalStorageUri: vscode.Uri.file('/fake_new_suite/globalStorage'), logUri: vscode.Uri.file('/fake_new_suite/logUri'), storageUri: vscode.Uri.file('/fake_new_suite/storageUri'),
+            asAbsolutePath: (p) => path.resolve('/fake_new_suite',p), secrets: new MockSecretStorage(),
+            globalStoragePath: '/fake_new_suite/globalStoragePath',
+            extension: { id: 'test.jinjer.new', extensionPath: '/fake_new_suite', isActive: false, packageJSON: {name: "jinjer-test", version: "0.0.0"}, activate: (() => ({})) as any, exports: {}, extensionKind: vscode.ExtensionKind.Workspace } as any,
+            languageModelAccessInformation: new MockLanguageModelAccessInformation()
+        };
+        // Ensure extensionActivate is available. It's imported at the top of the file.
+        if (extensionActivate) {
+            await extensionActivate(mockContext);
+        }
+    });
+
+    afterEach(async () => {
+        testSuiteStubs.forEach(s => s.restore());
+        testSuiteStubs = [];
+        testSuiteSpies.forEach(s => s.restore());
+        testSuiteSpies = [];
+
+        // activeTextEditorStub is already in testSuiteStubs, so it's restored there.
+        activeTextEditorStub = undefined;
+
+        if (extensionDeactivate) {
+            extensionDeactivate();
+        }
+        // Spies on prototypes or global objects need explicit restoration if not in testSuiteSpies
+        // or if the spy wrapper itself isn't what's stored.
+        // Nunjucks spies are on prototypes, console.warn is global.
+        // The `sinon.spy` calls above replace the method with a spy. Restoring them:
+        if ((nunjucks.Environment.prototype.renderString as sinon.SinonSpy).restore) {
+            (nunjucks.Environment.prototype.renderString as sinon.SinonSpy).restore();
+        }
+        if ((nunjucks.configure as sinon.SinonSpy).restore) {
+            (nunjucks.configure as sinon.SinonSpy).restore();
+        }
+        if ((console.warn as sinon.SinonSpy).restore) {
+            (console.warn as sinon.SinonSpy).restore();
+        }
+    });
+
+    // Placeholder test removed, actual tests will be inserted below by copying from the old suite and adapting.
+
+    test('No Include Key', async () => {
+        mockJinjerConfig.contextFile = 'main_no_include.json';
+        const mainContent = { val: "main_no_include_val" };
+        mockFileContents.set(getFixtureUri('main_no_include.json').fsPath, JSON.stringify(mainContent));
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        assert.ok(renderStringSpy.called, 'Nunjucks renderString was not called');
+        const contextUsed = renderStringSpy.lastCall.args[1];
+        assert.deepStrictEqual(contextUsed, mainContent);
+    });
+
+    test('Empty Include List', async () => {
+        mockJinjerConfig.contextFile = 'main_empty_include.json';
+        const mainContent = { val: "main_empty_include_val", "_jinjer_include_contexts": [] };
+        mockFileContents.set(getFixtureUri('main_empty_include.json').fsPath, JSON.stringify(mainContent));
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        assert.ok(renderStringSpy.called, 'Nunjucks renderString was not called');
+        const contextUsed = renderStringSpy.lastCall.args[1];
+        assert.deepStrictEqual(contextUsed, mainContent);
+    });
+
+    test('Single Include', async () => {
+        mockJinjerConfig.contextFile = 'main_single_include.json';
+
+        const mainContent = { "mainVal": "m_single", "_jinjer_include_contexts": ["include1.json"] };
+        const include1Content = { "inclVal": "i1_single" };
+
+        mockFileContents.set(getFixtureUri('main_single_include.json').fsPath, JSON.stringify(mainContent));
+        mockFileContents.set(getFixtureUri('include1.json').fsPath, JSON.stringify(include1Content));
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        assert.ok(renderStringSpy.called, 'Nunjucks renderString was not called');
+        const contextUsedByNunjucks = renderStringSpy.lastCall.args[1];
+
+        const expectedContext = {
+            "mainVal": "m_single",
+            "inclVal": "i1_single",
+            "_jinjer_include_contexts": ["include1.json"]
+        };
+        assert.deepStrictEqual(contextUsedByNunjucks, expectedContext);
+    });
+
+    test('Nested Include (Multi-Level)', async () => {
+        mockJinjerConfig.contextFile = 'main_multi_level.json';
+
+        const mainContent = { "mainVal": "m_multi", "_jinjer_include_contexts": ["level1.json"] };
+        const level1Content = { "l1Val": "l1_multi", "_jinjer_include_contexts": ["level2.json"] };
+        const level2Content = { "l2Val": "l2_multi" };
+
+        mockFileContents.set(getFixtureUri('main_multi_level.json').fsPath, JSON.stringify(mainContent));
+        mockFileContents.set(getFixtureUri('level1.json').fsPath, JSON.stringify(level1Content));
+        mockFileContents.set(getFixtureUri('level2.json').fsPath, JSON.stringify(level2Content));
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        assert.ok(renderStringSpy.called, 'Nunjucks renderString was not called');
+        const contextUsed = renderStringSpy.lastCall.args[1];
+
+        const expectedContext = {
+            "mainVal": "m_multi",
+            "l1Val": "l1_multi",
+            "l2Val": "l2_multi",
+            "_jinjer_include_contexts": ["level2.json"]
+        };
+        assert.deepStrictEqual(contextUsed, expectedContext);
+    });
+
+    test('Merge Conflict (Last Include Wins for conflicting keys)', async () => {
+        mockJinjerConfig.contextFile = 'main_conflict.json';
+
+        const mainContent = { "key": "main_val", "mainOnlyKey": "main_only_val", "_jinjer_include_contexts": ["conflict_source.json"] };
+        const conflictContent = { "key": "conflict_val", "conflictOnlyKey": "conflict_only_val" };
+
+        mockFileContents.set(getFixtureUri('main_conflict.json').fsPath, JSON.stringify(mainContent));
+        mockFileContents.set(getFixtureUri('conflict_source.json').fsPath, JSON.stringify(conflictContent));
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        assert.ok(renderStringSpy.called, 'Nunjucks renderString was not called');
+        const contextUsed = renderStringSpy.lastCall.args[1];
+
+        const expectedContext = {
+            "key": "conflict_val",
+            "mainOnlyKey": "main_only_val",
+            "conflictOnlyKey": "conflict_only_val",
+            "_jinjer_include_contexts": ["conflict_source.json"]
+        };
+        assert.deepStrictEqual(contextUsed, expectedContext);
+    });
+
+    test('Relative Path Navigation(../common.json)', async () => {
+        mockJinjerConfig.contextFile = 'main_relative_up.json';
+
+        const mainContent = { "mainVal": "main_relative_up_val", "_jinjer_include_contexts": ["../common_data.json"] };
+        const commonDataContent = { "commonVal": "common_data_val" };
+
+        mockFileContents.set(getFixtureUri('base/main_relative_up.json').fsPath, JSON.stringify(mainContent));
+        mockFileContents.set(getFixtureUri('common_data.json').fsPath, JSON.stringify(commonDataContent));
+
+        // For this test, the "active document" needs to be in the 'base' subdirectory
+        // so that 'main_relative_up.json' is found correctly by findContextFile.
+        // The beforeEach already sets up activeTextEditor with 'dummy_template_new.j2' at the testFixtureRoot.
+        // We need to override it for this test.
+        if (activeTextEditorStub && typeof activeTextEditorStub.restore === 'function') {
+            activeTextEditorStub.restore(); // remove the default one from beforeEach
+        }
+        const dummyInBaseDocUri = getFixtureUri('base/dummy_in_base.j2');
+        activeTextEditorStub = sinon.stub(vscode.window, 'activeTextEditor').returns({
+            document: { uri: dummyInBaseDocUri, fileName: dummyInBaseDocUri.fsPath, getText: () => "" }
+        } as any);
+        testSuiteStubs.push(activeTextEditorStub); // Add for cleanup by suite's afterEach
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        assert.ok(renderStringSpy.called, 'Nunjucks renderString was not called');
+        const contextUsed = renderStringSpy.lastCall.args[1];
+
+        const expectedContext = {
+            "mainVal": "main_relative_up_val",
+            "commonVal": "common_data_val",
+            "_jinjer_include_contexts": ["../common_data.json"]
+        };
+        assert.deepStrictEqual(contextUsed, expectedContext);
+    });
+
+    test('Relative Path Include (./subdir/file.json)', async () => {
+        mockJinjerConfig.contextFile = 'main_relative_path.json';
+
+        const mainContent = { "mainVal": "main_relative_val", "_jinjer_include_contexts": ["./subdir/relative.json"] };
+        const relativeContent = { "relativeVal": "relative_subdir_val" };
+
+        mockFileContents.set(getFixtureUri('main_relative_path.json').fsPath, JSON.stringify(mainContent));
+        mockFileContents.set(getFixtureUri('subdir/relative.json').fsPath, JSON.stringify(relativeContent));
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        assert.ok(renderStringSpy.called, 'Nunjucks renderString was not called');
+        const contextUsed = renderStringSpy.lastCall.args[1];
+
+        const expectedContext = {
+            "mainVal": "main_relative_val",
+            "relativeVal": "relative_subdir_val",
+            "_jinjer_include_contexts": ["./subdir/relative.json"]
+        };
+        assert.deepStrictEqual(contextUsed, expectedContext);
+    });
+
+    test('Circular Dependency', async () => {
+        mockJinjerConfig.contextFile = 'main_circular_a.json';
+
+        const circAContent = { "val_a": "a", "shared_key": "from_a", "_jinjer_include_contexts": ["main_circular_b.json"] };
+        const circBContent = { "val_b": "b", "shared_key": "from_b", "_jinjer_include_contexts": ["main_circular_a.json"] };
+
+        mockFileContents.set(getFixtureUri('main_circular_a.json').fsPath, JSON.stringify(circAContent));
+        mockFileContents.set(getFixtureUri('main_circular_b.json').fsPath, JSON.stringify(circBContent));
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        assert.ok(renderStringSpy.called, 'Nunjucks renderString was not called');
+        const contextUsed = renderStringSpy.lastCall.args[1];
+
+        const expectedContext = {
+            "val_a": "a",
+            "val_b": "b",
+            "shared_key": "from_a",
+            "_jinjer_include_contexts": ["main_circular_b.json"]
+        };
+        assert.deepStrictEqual(contextUsed, expectedContext);
+        assert.ok(consoleWarnSpy.calledWith(sinon.match(/Circular dependency detected/)), 'Expected console.warn for circular dependency');
+    });
+
+    test('Non-existent Include', async () => {
+        mockJinjerConfig.contextFile = 'main_non_existent_include.json';
+
+        const mainContent = { "mainVal": "main_val", "_jinjer_include_contexts": ["non_existent.json"] };
+        mockFileContents.set(getFixtureUri('main_non_existent_include.json').fsPath, JSON.stringify(mainContent));
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        assert.ok(renderStringSpy.called, 'Nunjucks renderString was not called');
+        const contextUsed = renderStringSpy.lastCall.args[1];
+
+        assert.deepStrictEqual(contextUsed, mainContent);
+        assert.ok(consoleWarnSpy.calledWith(sinon.match(/Included context file not found/)), 'Expected console.warn for missing include file');
+        assert.ok(consoleWarnSpy.calledWith(sinon.match(/non_existent.json/)), 'Expected non_existent.json to be mentioned in the warning');
+    });
+
+    test('Include YAML from JSON', async () => {
+        mockJinjerConfig.contextFile = 'main_include_yaml.json';
+
+        const mainContent = { "mainJsonVal": "main_json_val", "_jinjer_include_contexts": ["data.yaml"] };
+        const yamlContentString = `yamlVal: "yaml_val"\notherYamlKey: "other_yaml_key_val"`;
+        const expectedYamlParsed = { yamlVal: "yaml_val", otherYamlKey: "other_yaml_key_val" };
+
+        mockFileContents.set(getFixtureUri('main_include_yaml.json').fsPath, JSON.stringify(mainContent));
+        mockFileContents.set(getFixtureUri('data.yaml').fsPath, yamlContentString);
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        assert.ok(renderStringSpy.called, 'Nunjucks renderString was not called');
+        const contextUsed = renderStringSpy.lastCall.args[1];
+
+        const expectedContext = {
+            "mainJsonVal": "main_json_val",
+            ...expectedYamlParsed,
+            "_jinjer_include_contexts": ["data.yaml"]
+        };
+        assert.deepStrictEqual(contextUsed, expectedContext);
+    });
+
+    test('Absolute Path Include (mocked as absolute)', async () => {
+        mockJinjerConfig.contextFile = 'main_absolute_include.json';
+        const includePathString = '/abs_path_to/absolute_target.json';
+
+        const mainContent = { "mainVal": "main_abs_val", "_jinjer_include_contexts": [includePathString] };
+        const absoluteTargetContent = { "absTargetVal": "abs_target_val" };
+
+        mockFileContents.set(getFixtureUri('main_absolute_include.json').fsPath, JSON.stringify(mainContent));
+        mockFileContents.set(includePathString, JSON.stringify(absoluteTargetContent)); // Keyed by the "absolute" path
+
+        const pathIsAbsoluteStub = sinon.stub(path, 'isAbsolute').callsFake((p: string) => p === includePathString);
+        testSuiteStubs.push(pathIsAbsoluteStub);
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        assert.ok(renderStringSpy.called, 'Nunjucks renderString was not called');
+        const contextUsed = renderStringSpy.lastCall.args[1];
+
+        const expectedContext = {
+            "mainVal": "main_abs_val",
+            "absTargetVal": "abs_target_val",
+            "_jinjer_include_contexts": [includePathString]
+        };
+        assert.deepStrictEqual(contextUsed, expectedContext);
+        assert.ok(pathIsAbsoluteStub.calledWith(includePathString), 'path.isAbsolute was not called with the include string');
+    });
+
+    test('Should skip include outside workspace (relative path)', async () => {
+        mockJinjerConfig.contextFile = 'main_includes_outside_relative.json';
+
+        const mainContent = {
+            "mainVal": "m1",
+            "_jinjer_include_contexts": ["../outside_file.json"]
+        };
+        const outsideContent = { "outsideVal": "val_outside" };
+
+        mockFileContents.set(getFixtureUri('main_includes_outside_relative.json').fsPath, JSON.stringify(mainContent));
+        const outsideFilePath = path.resolve(mockWorkspaceFolder.uri.fsPath, '../outside_file.json');
+        mockFileContents.set(outsideFilePath, JSON.stringify(outsideContent));
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        const contextUsed = renderStringSpy.lastCall.args[1];
+        assert.deepStrictEqual(contextUsed, {
+            "mainVal": "m1",
+            "_jinjer_include_contexts": ["../outside_file.json"]
+        }, "Context should not contain data from outside_file.json");
+
+        assert.ok(consoleWarnSpy.calledWith(sinon.match(/is outside the current workspace/)), 'Expected console.warn for outside workspace');
+        assert.ok(consoleWarnSpy.calledWith(sinon.match(path.basename(outsideFilePath))), 'Warning should mention the problematic file path');
+    });
+
+    test('Should skip include outside workspace (absolute path)', async () => {
+        mockJinjerConfig.contextFile = 'main_includes_outside_absolute.json';
+        const tempDir = require('os').tmpdir();
+        const absoluteOutsidePath = path.normalize(path.join(tempDir, 'jinjer_test_outside_abs.json'));
+
+        const mainContent = {
+            "mainVal": "m2",
+            "_jinjer_include_contexts": [absoluteOutsidePath]
+        };
+        const outsideContent = { "outsideAbsVal": "val_abs_outside" };
+
+        mockFileContents.set(getFixtureUri('main_includes_outside_absolute.json').fsPath, JSON.stringify(mainContent));
+        mockFileContents.set(absoluteOutsidePath, JSON.stringify(outsideContent));
+
+        const pathIsAbsoluteStub = sinon.stub(path, 'isAbsolute').callsFake((p: string) => {
+            if (p === absoluteOutsidePath) {return true;}
+            return require('path').posix.isAbsolute(p) || require('path').win32.isAbsolute(p);
+        });
+        testSuiteStubs.push(pathIsAbsoluteStub);
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        const contextUsed = renderStringSpy.lastCall.args[1];
+        assert.deepStrictEqual(contextUsed, {
+            "mainVal": "m2",
+            "_jinjer_include_contexts": [absoluteOutsidePath]
+        }, "Context should not contain data from absolute_outside_file.json");
+
+        assert.ok(consoleWarnSpy.calledWith(sinon.match(/is outside the current workspace/)), 'Expected console.warn for outside workspace');
+        assert.ok(consoleWarnSpy.calledWith(sinon.match(path.basename(absoluteOutsidePath))), 'Warning should mention the problematic file path');
+    });
+
+    test('Should load include inside workspace (absolute path)', async () => {
+        mockJinjerConfig.contextFile = 'main_includes_inside_absolute.json';
+        const absoluteInsidePath = path.join(mockWorkspaceFolder.uri.fsPath, 'included_abs_inside.json');
+
+        const mainContent = {
+            "mainVal": "m3",
+            "_jinjer_include_contexts": [absoluteInsidePath]
+        };
+        const insideContent = { "insideAbsVal": "val_abs_inside" };
+
+        mockFileContents.set(getFixtureUri('main_includes_inside_absolute.json').fsPath, JSON.stringify(mainContent));
+        mockFileContents.set(absoluteInsidePath, JSON.stringify(insideContent));
+
+        const pathIsAbsoluteStub = sinon.stub(path, 'isAbsolute').callsFake((p: string) => {
+            if (p === absoluteInsidePath) {return true;}
+            return require('path').posix.isAbsolute(p) || require('path').win32.isAbsolute(p);
+        });
+        testSuiteStubs.push(pathIsAbsoluteStub);
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        const contextUsed = renderStringSpy.lastCall.args[1];
+        assert.deepStrictEqual(contextUsed, {
+            "mainVal": "m3",
+            "insideAbsVal": "val_abs_inside",
+            "_jinjer_include_contexts": [absoluteInsidePath]
+        }, "Context should contain data from absolute_inside_file.json");
+
+        const warningCall = consoleWarnSpy.getCalls().find(call => call.args.some((arg: string) => typeof arg === 'string' && arg.includes('is outside the current workspace')));
+        assert.strictEqual(warningCall, undefined, 'Should not warn for valid absolute path inside workspace');
+    });
+
+    test('Should load absolute include when no workspace is open', async () => {
+        // Simulate no workspace being open
+        const getWorkspaceFolderStubInstance = testSuiteStubs.find(s => s.name === 'getWorkspaceFolder'); // Assuming stubs are named or identifiable
+        if (getWorkspaceFolderStubInstance && (getWorkspaceFolderStubInstance as sinon.SinonStub).name === 'getWorkspaceFolder') { // Check if it's the correct stub
+            (getWorkspaceFolderStubInstance as sinon.SinonStub).returns(undefined);
+        } else {
+            // This is a fallback or error if the specific stub isn't found as expected.
+            // This indicates a potential issue in how stubs are stored or named in setup.
+            // For this test, we'll proceed, but ideally the stub should be precisely controlled.
+            console.warn("Test 'Should load absolute include when no workspace is open': Could not reliably modify getWorkspaceFolder stub. It might have been already restored or not named.");
+            // If it's critical, re-stub it and add to testSuiteStubs for this test only.
+            const tempGetWorkspaceFolderStub = sinon.stub(vscode.workspace, 'getWorkspaceFolder').returns(undefined);
+            testSuiteStubs.push(tempGetWorkspaceFolderStub); // Ensure this temporary stub is cleaned up
+        }
+
+        const looseFileDir = require('os').tmpdir();
+        const looseFileName = 'loosefile_for_no_ws_test.j2';
+        const looseFileUri = vscode.Uri.file(path.join(looseFileDir, looseFileName));
+
+        if (activeTextEditorStub && typeof activeTextEditorStub.restore === 'function') {
+            activeTextEditorStub.restore();
+        }
+        activeTextEditorStub = sinon.stub(vscode.window, 'activeTextEditor').returns({
+            document: { uri: looseFileUri, fileName: looseFileUri.fsPath, getText: () => "{{mainVal}} {{absVal}}" }
+        } as any);
+        testSuiteStubs.push(activeTextEditorStub);
+
+        mockJinjerConfig.contextFile = 'main_abs_include_no_workspace.json';
+        const absoluteIncludePath = path.resolve(require('os').tmpdir(), 'abs_data_no_ws.json');
+
+        const mainContent = { "mainVal": "m4", "_jinjer_include_contexts": [absoluteIncludePath] };
+        const includeContent = { "absVal": "val_abs_no_ws" };
+
+        // Main context file is relative to the loose file itself
+        mockFileContents.set(path.join(looseFileDir, 'main_abs_include_no_workspace.json'), JSON.stringify(mainContent));
+        mockFileContents.set(absoluteIncludePath, JSON.stringify(includeContent));
+
+        const pathIsAbsoluteStub = sinon.stub(path, 'isAbsolute').callsFake((p: string) => {
+            if (p === absoluteIncludePath) {return true;}
+            return require('path').posix.isAbsolute(p) || require('path').win32.isAbsolute(p);
+        });
+        testSuiteStubs.push(pathIsAbsoluteStub);
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        const contextUsed = renderStringSpy.lastCall.args[1];
+        assert.deepStrictEqual(contextUsed, {
+            "mainVal": "m4",
+            "absVal": "val_abs_no_ws",
+            "_jinjer_include_contexts": [absoluteIncludePath]
+        }, "Context should load absolute path when no workspace is open");
+
+        const warningCall = consoleWarnSpy.getCalls().find(call => call.args.some((arg: string) => typeof arg === 'string' && arg.includes('is outside the current workspace')));
+        assert.strictEqual(warningCall, undefined, 'Should not warn about workspace boundary if no workspace is open');
+    });
+});
+// --- End of Suite for Context Inclusion Tests (NEW, ISOLATED SETUP) ---

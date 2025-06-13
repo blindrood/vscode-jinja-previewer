@@ -32,3 +32,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ## [0.0.7] - 2025-06-12
 
 - fixes bug #3
+
+## [0.0.10] - 2025-06-13
+
+- fixes bug #5

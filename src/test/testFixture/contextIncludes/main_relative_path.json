@@ -1,0 +1,4 @@
+{
+  "mainVal": "main_relative_val",
+  "_jinjer_include_contexts": ["./subdir/relative.json"]
+}

@@ -1,0 +1,4 @@
+{
+  "val_a": "value_a",
+  "_jinjer_include_contexts": ["main_circular_b.json"]
+}

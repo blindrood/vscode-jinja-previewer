@@ -250,6 +250,17 @@ async function getContextData(document: vscode.TextDocument): Promise<any> {
     const workspaceSettings = await getWorkspaceSettings(workspaceFolder?.uri);
 
     const globalConfig = vscode.workspace.getConfiguration('jinjer');
+    // const contextIncludeKey = globalConfig.get<string | null>('contextIncludeKey'); // Old way
+
+    // Determine effective contextIncludeKey: .jinjer-settings.json > VS Code settings > default
+    let effectiveContextIncludeKey: string | null | undefined;
+    if (workspaceSettings.hasOwnProperty('contextIncludeKey')) {
+        effectiveContextIncludeKey = workspaceSettings.contextIncludeKey;
+        console.log(`Jinjer: 🔑 Using contextIncludeKey from .jinjer-settings.json: "${effectiveContextIncludeKey}"`);
+    } else {
+        effectiveContextIncludeKey = globalConfig.get<string | null>('contextIncludeKey');
+        console.log(`Jinjer: 🔑 Using contextIncludeKey from VS Code settings (or default): "${effectiveContextIncludeKey}"`);
+    }
 
     // Determine contextFile: workspace setting > global setting > default
     const contextFileName = workspaceSettings.contextFile || globalConfig.get<string>('contextFile') || ".jinjer.json";
@@ -259,28 +270,20 @@ async function getContextData(document: vscode.TextDocument): Promise<any> {
     const contextFileUri = await findContextFile(document.uri, contextFileName);
 
     if (!contextFileUri) {
-        console.error(`Jinjer: ❌ Context file "${contextFileName}" not found.`);
-        return {};  // Return empty object to avoid crashes
+        console.warn(`Jinjer: Context file "${contextFileName}" not found. No context will be loaded.`);
+        return {};  // Return empty object if no initial context file
     }
 
     let contextData = {};
     try {
-        const contextFile = await vscode.workspace.fs.readFile(contextFileUri);
-        const contextString = Buffer.from(contextFile).toString('utf8');
-
-        if (contextFileName.endsWith('.json')) {
-            contextData = JSON.parse(contextString);
-        } else if (contextFileName.endsWith('.yaml') || contextFileName.endsWith('.yml')) {
-            contextData = yaml.load(contextString) as any;
-        } else {
-            vscode.window.showWarningMessage('Unsupported context file format. Please use .json or .yaml');
-        }
-
-        console.log("Jinjer: ✅ Successfully loaded context data:", contextData);
-
+        // Initialize processedPaths for the top-level call
+        const processedPaths = new Set<string>();
+        contextData = await loadContextRecursive(contextFileUri, effectiveContextIncludeKey, processedPaths, workspaceFolder?.uri);
+        console.log("Jinjer: ✅ Successfully loaded and merged context data:", contextData);
     } catch (error) {
-        vscode.window.showErrorMessage(`Error reading context file: ${error}`);
-        console.error("Jinjer: ❌ Error loading context file:", error);
+        vscode.window.showErrorMessage(`Error loading context data: ${error}`);
+        console.error("Jinjer: ❌ Error loading context data:", error);
+        return {}; // Return empty on error
     }
 
     // Check and apply variable suffix
@@ -339,3 +342,236 @@ async function findContextFile(startUri: vscode.Uri, contextFileName: string): P
 }
 
 export function deactivate() {}
+
+// Helper function to parse context files (JSON or YAML)
+async function parseContextFile(fileUri: vscode.Uri): Promise<any> {
+    try {
+        const fileContent = await vscode.workspace.fs.readFile(fileUri);
+        const fileString = Buffer.from(fileContent).toString('utf8');
+        const fileExtension = path.extname(fileUri.fsPath).toLowerCase();
+
+        if (fileExtension === '.json') {
+            return JSON.parse(fileString);
+        } else if (fileExtension === '.yaml' || fileExtension === '.yml') {
+            return yaml.load(fileString) as any;
+        } else {
+            vscode.window.showWarningMessage(`Unsupported context file format for ${fileUri.fsPath}. Please use .json or .yaml.`);
+            return {};
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`Error reading or parsing context file ${fileUri.fsPath}: ${error}`);
+        console.error(`Jinjer: ❌ Error reading or parsing context file ${fileUri.fsPath}:`, error);
+        return {}; // Return empty on error
+    }
+}
+
+// Properly implements deep merging for context objects.
+function deepMerge(target: any, source: any): any {
+    const output = { ...target }; // Shallow copy target to start
+
+    if (isObject(source)) {
+        Object.keys(source).forEach(key => {
+            if (isObject(source[key])) {
+                if (key in output && isObject(output[key])) {
+                    // If both target and source have an object for this key, recurse
+                    output[key] = deepMerge(output[key], source[key]);
+                } else {
+                    // If target does not have this key or it's not an object,
+                    // directly assign source's object (could be a deep clone if necessary,
+                    // but for context data, direct assignment is usually fine).
+                    // For simplicity and to match common expectations (like JSON.parse(JSON.stringify(obj))),
+                    // we'll create a new object for source[key] if we want to ensure no shared references
+                    // with the original source object, but typically this is not an issue for JSON-like data.
+                    // However, the recursive call handles deeper structures.
+                    output[key] = deepMerge({}, source[key]); // Ensure a new object if target didn't have one
+                }
+            } else {
+                // Primitives, arrays, or null from source overwrite whatever is in target
+                output[key] = source[key];
+            }
+        });
+    }
+    // If source is not an object (e.g. null, undefined, primitive),
+    // the original prompt implied source overwrites target.
+    // However, typical deepMerge implementations merge 'source' *into* 'target'.
+    // If source itself isn't an object, there's nothing to iterate and merge.
+    // The { ...target } handles the base case.
+    // If source is null or not an object, it shouldn't typically overwrite an existing target object.
+    // The definition of deepMerge implies merging object properties.
+    // Let's stick to merging properties if source is an object.
+    // If source is not an object, it should not alter target if target is an object.
+    // If target is also not an object, then source should be returned (as per step 1 of the prompt).
+    // This function assumes target is always an object due to its usage in loadContextRecursive.
+    // Let's refine based on the prompt's first rule:
+    // "If source is not an object or is null, return source (or target if source is undefined...)"
+    // This part is tricky if the function is meant to modify target in place or return a new object.
+    // The current structure returns a new object `output`.
+
+    // Let's re-evaluate the prompt's rules for the function signature `deepMerge(target: any, source: any): any`
+    // Rule 1: "If source is not an object or is null, return source..."
+    // This implies if source is primitive, it replaces target.
+    // This is not typical for a function named deepMerge that usually merges properties *into* a target object.
+    // Let's assume the primary goal is merging object properties deeply.
+    // The provided example: `deepMerge({ a: 1, b: { c: 2 } }, { b: { d: 3 }, e: 4 })`
+    // results in `{ a: 1, b: { c: 2, d: 3 }, e: 4 }`. This implies target is preserved and modified.
+
+    // Correcting based on standard deep merge behavior where target is modified or a new merged object is returned.
+    // The provided solution should modify `target` (or a copy) with `source`'s properties.
+
+    // Let's simplify and follow a common pattern:
+    // Create a new object from target.
+    // Iterate source. If source[key] is object and target[key] is object, recurse.
+    // Else, source[key] overwrites target[key].
+    // Arrays are overwritten, not merged.
+
+    // Revised logic for clarity and standard behavior:
+    if (!isObject(source)) {
+        // If source is not an object, standard deep merge doesn't apply in terms of merging properties.
+        // Depending on strict interpretation, if source is primitive, it could replace target if target is also primitive.
+        // However, in the context of merging JSON-like objects, this case is less common for the root call.
+        // For recursive calls, if source[key] is primitive, it will be handled by the else clause below.
+        // If the function is called with a non-object source at the top level, returning source is reasonable.
+        return source; // As per prompt's rule 1, if source is not an object.
+    }
+
+    // Ensure output is an object if target wasn't, but source is.
+    const result = isObject(target) ? { ...target } : {};
+
+    for (const key in source) {
+        if (Object.prototype.hasOwnProperty.call(source, key)) {
+            const sourceValue = source[key];
+            const targetValue = result[key];
+            if (isObject(sourceValue) && isObject(targetValue)) {
+                // Both are objects, recurse
+                result[key] = deepMerge(targetValue, sourceValue);
+            } else {
+                // Not both objects (one might be, or neither), source overwrites
+                // This also handles array replacement as arrays are !isObject(true) for our helper,
+                // or if isObject includes arrays, this assignment is fine.
+                // Let's refine isObject to be specific for plain objects if array merging is different.
+                // Assuming isObject is for plain objects:
+                result[key] = sourceValue;
+            }
+        }
+    }
+    return result;
+}
+
+// Helper to check if a value is a plain object (and not an array or null)
+function isObject(item: any): boolean {
+    return (item && typeof item === 'object' && !Array.isArray(item) && item !== null);
+}
+
+async function loadContextRecursive(
+    contextFileUri: vscode.Uri,
+    contextIncludeKey: string | null | undefined,
+    processedPaths: Set<string>,
+    workspaceRoot?: vscode.Uri // Optional, for resolving absolute paths if ever needed
+): Promise<any> {
+    const contextPathKey = contextFileUri.fsPath;
+
+    // Check for circular dependencies
+    if (processedPaths.has(contextPathKey)) {
+        console.warn(`Jinjer: ⚠️ Circular dependency detected for context file: ${contextPathKey}. Skipping further processing for this path.`);
+        // Return empty or some indicator, or the data from this file without processing includes,
+        // to prevent infinite loop. For now, just parse and return this file's content.
+        return await parseContextFile(contextFileUri);
+    }
+
+    // Add current path to the set of processed paths for this recursion branch
+    processedPaths.add(contextPathKey);
+
+    let currentContext = await parseContextFile(contextFileUri);
+
+    if (!contextIncludeKey || typeof currentContext !== 'object' || currentContext === null) {
+        // No key to look for, or currentContext is not an object, so no includes possible
+        processedPaths.delete(contextPathKey); // Remove before returning
+        return currentContext;
+    }
+
+    const includePaths = currentContext[contextIncludeKey];
+
+    if (Array.isArray(includePaths)) {
+        // Remove the include key from the current context to avoid it being in the final merged data
+        // unless it's explicitly part of another included file.
+        // Alternatively, ensure deepMerge handles this or it's filtered out at the end.
+        // For now, let's leave it and assume deepMerge overwrites it if necessary.
+        // delete currentContext[contextIncludeKey]; // Optional: consider if the key itself should be removed
+
+        for (const includePathString of includePaths) {
+            if (typeof includePathString !== 'string') {
+                console.warn(`Jinjer: ⚠️ Invalid include path found in ${contextPathKey}: ${includePathString}. Must be a string. Skipping.`);
+                continue;
+            }
+
+            let resolvedIncludeUri: vscode.Uri;
+            if (path.isAbsolute(includePathString)) {
+                // True absolute path, use it directly.
+                resolvedIncludeUri = vscode.Uri.file(includePathString);
+                console.log(`Jinjer: ➡️ Absolute include path "${includePathString}" resolved to "${resolvedIncludeUri.fsPath}"`);
+            } else {
+                // Relative paths are relative to the directory of the current context file.
+                // contextPathKey is contextFileUri.fsPath.
+                const currentContextDir = vscode.Uri.file(path.dirname(contextPathKey));
+                resolvedIncludeUri = vscode.Uri.joinPath(currentContextDir, includePathString);
+                console.log(`Jinjer: ↪️ Relative include path "${includePathString}" in "${contextPathKey}" resolved to "${resolvedIncludeUri.fsPath}"`);
+            }
+
+            // <<< INSERT BOUNDARY CHECK HERE >>>
+            if (workspaceRoot) {
+                const normalizedWorkspacePath = path.normalize(workspaceRoot.fsPath);
+                const normalizedIncludePath = path.normalize(resolvedIncludeUri.fsPath);
+
+                // Ensure paths are compared in a way that handles trailing separators consistently,
+                // and considers the workspace path as a directory.
+                // A simple way is to ensure the workspace path ends with a separator for startsWith.
+                const workspacePathWithSep = normalizedWorkspacePath.endsWith(path.sep)
+                    ? normalizedWorkspacePath
+                    : normalizedWorkspacePath + path.sep;
+
+                // On Windows, paths can be case-insensitive. For robust check, convert both to lower case.
+                const isPathInsideWorkspace = process.platform === "win32"
+                    ? normalizedIncludePath.toLowerCase().startsWith(workspacePathWithSep.toLowerCase())
+                    : normalizedIncludePath.startsWith(workspacePathWithSep);
+
+                if (!isPathInsideWorkspace) {
+                    // Check if the include path is exactly the workspace path (e.g. including the root itself, though unlikely)
+                    // This case is fine as it's not "outside".
+                    const isPathExactlyWorkspace = normalizedIncludePath === normalizedWorkspacePath;
+                    if (!isPathExactlyWorkspace) {
+                         console.warn(`Jinjer: ⚠️ Included context file "${resolvedIncludeUri.fsPath}" is outside the current workspace ("${workspaceRoot.fsPath}"). Skipping.`);
+                         continue; // Skip this include
+                    }
+                }
+            }
+
+            try {
+                // Check if the resolved file exists before attempting to load
+                // Note: parseContextFile will handle file not found, but good to log here too.
+                await vscode.workspace.fs.stat(resolvedIncludeUri); // This will throw if file doesn't exist
+
+                const includedContext = await loadContextRecursive(
+                    resolvedIncludeUri,
+                    contextIncludeKey,
+                    processedPaths, // Pass the same set to track dependencies across the entire load operation
+                    workspaceRoot
+                );
+                currentContext = deepMerge(currentContext, includedContext);
+            } catch (error) {
+                 if (error instanceof vscode.FileSystemError && error.code === 'FileNotFound') {
+                    console.warn(`Jinjer: ⚠️ Included context file not found: ${resolvedIncludeUri.fsPath}. Skipping.`);
+                } else {
+                    console.error(`Jinjer: ❌ Error processing included context file ${resolvedIncludeUri.fsPath}:`, error);
+                    // Decide if you want to bubble the error or just skip this include
+                }
+            }
+        }
+    } else if (includePaths !== undefined) {
+        // The key exists but is not an array
+        console.warn(`Jinjer: ⚠️ The value of '${contextIncludeKey}' in ${contextPathKey} must be an array of strings. Found:`, includePaths);
+    }
+
+    // Remove current path from the set before returning up the recursion stack
+    processedPaths.delete(contextPathKey);
+    return currentContext;
+}

@@ -1,0 +1,4 @@
+{
+  "mainVal": "main_relative_up_val",
+  "_jinjer_include_contexts": ["../common_data.json"]
+}

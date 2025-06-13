@@ -1,0 +1,4 @@
+{
+  "mainVal": "main_single_val",
+  "_jinjer_include_contexts": ["include1.json"]
+}
