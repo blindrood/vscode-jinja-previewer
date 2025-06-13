@@ -649,8 +649,6 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
 
 });
 
-});
-
 // --- Suite for Context Inclusion Tests (NEW, ISOLATED SETUP) ---
 suite('Context Inclusion Tests (New)', () => {
     let testSuiteStubs: sinon.SinonStub[] = [];
