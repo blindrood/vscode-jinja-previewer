@@ -742,8 +742,6 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
 
 });
 
-});
-
 // --- Suite for Context Inclusion Tests (NEW, ISOLATED SETUP) ---
 suite('Context Inclusion Tests (New)', () => {
     let testSuiteStubs: sinon.SinonStub[] = [];
@@ -1213,7 +1211,7 @@ suite('Context Inclusion Tests (New)', () => {
         mockFileContents.set(absoluteOutsidePath, JSON.stringify(outsideContent));
 
         const pathIsAbsoluteStub = sinon.stub(path, 'isAbsolute').callsFake((p: string) => {
-            if (p === absoluteOutsidePath) return true;
+            if (p === absoluteOutsidePath) {return true;}
             return require('path').posix.isAbsolute(p) || require('path').win32.isAbsolute(p);
         });
         testSuiteStubs.push(pathIsAbsoluteStub);
@@ -1245,7 +1243,7 @@ suite('Context Inclusion Tests (New)', () => {
         mockFileContents.set(absoluteInsidePath, JSON.stringify(insideContent));
 
         const pathIsAbsoluteStub = sinon.stub(path, 'isAbsolute').callsFake((p: string) => {
-            if (p === absoluteInsidePath) return true;
+            if (p === absoluteInsidePath) {return true;}
             return require('path').posix.isAbsolute(p) || require('path').win32.isAbsolute(p);
         });
         testSuiteStubs.push(pathIsAbsoluteStub);
@@ -1266,7 +1264,7 @@ suite('Context Inclusion Tests (New)', () => {
 
     test('Should load absolute include when no workspace is open', async () => {
         // Simulate no workspace being open
-        const getWorkspaceFolderStubInstance = testSuiteStubs.find(s => s.stub && s.stub.name === 'getWorkspaceFolder'); // Assuming stubs are named or identifiable
+        const getWorkspaceFolderStubInstance = testSuiteStubs.find(s => s.name === 'getWorkspaceFolder'); // Assuming stubs are named or identifiable
         if (getWorkspaceFolderStubInstance && (getWorkspaceFolderStubInstance as sinon.SinonStub).name === 'getWorkspaceFolder') { // Check if it's the correct stub
             (getWorkspaceFolderStubInstance as sinon.SinonStub).returns(undefined);
         } else {
@@ -1302,7 +1300,7 @@ suite('Context Inclusion Tests (New)', () => {
         mockFileContents.set(absoluteIncludePath, JSON.stringify(includeContent));
 
         const pathIsAbsoluteStub = sinon.stub(path, 'isAbsolute').callsFake((p: string) => {
-            if (p === absoluteIncludePath) return true;
+            if (p === absoluteIncludePath) {return true;}
             return require('path').posix.isAbsolute(p) || require('path').win32.isAbsolute(p);
         });
         testSuiteStubs.push(pathIsAbsoluteStub);
