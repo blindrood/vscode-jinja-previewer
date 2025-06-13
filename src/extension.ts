@@ -507,6 +507,33 @@ async function loadContextRecursive(
                 console.log(`Jinjer: ↪️ Relative include path "${includePathString}" in "${contextPathKey}" resolved to "${resolvedIncludeUri.fsPath}"`);
             }
 
+            // <<< INSERT BOUNDARY CHECK HERE >>>
+            if (workspaceRoot) {
+                const normalizedWorkspacePath = path.normalize(workspaceRoot.fsPath);
+                const normalizedIncludePath = path.normalize(resolvedIncludeUri.fsPath);
+
+                // Ensure paths are compared in a way that handles trailing separators consistently,
+                // and considers the workspace path as a directory.
+                // A simple way is to ensure the workspace path ends with a separator for startsWith.
+                const workspacePathWithSep = normalizedWorkspacePath.endsWith(path.sep)
+                    ? normalizedWorkspacePath
+                    : normalizedWorkspacePath + path.sep;
+
+                // On Windows, paths can be case-insensitive. For robust check, convert both to lower case.
+                const isPathInsideWorkspace = process.platform === "win32"
+                    ? normalizedIncludePath.toLowerCase().startsWith(workspacePathWithSep.toLowerCase())
+                    : normalizedIncludePath.startsWith(workspacePathWithSep);
+
+                if (!isPathInsideWorkspace) {
+                    // Check if the include path is exactly the workspace path (e.g. including the root itself, though unlikely)
+                    // This case is fine as it's not "outside".
+                    const isPathExactlyWorkspace = normalizedIncludePath === normalizedWorkspacePath;
+                    if (!isPathExactlyWorkspace) {
+                         console.warn(`Jinjer: ⚠️ Included context file "${resolvedIncludeUri.fsPath}" is outside the current workspace ("${workspaceRoot.fsPath}"). Skipping.`);
+                         continue; // Skip this include
+                    }
+                }
+            }
 
             try {
                 // Check if the resolved file exists before attempting to load

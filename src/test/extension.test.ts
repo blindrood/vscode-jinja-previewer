@@ -649,6 +649,8 @@ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
 
 });
 
+});
+
 // --- Suite for Context Inclusion Tests (NEW, ISOLATED SETUP) ---
 suite('Context Inclusion Tests (New)', () => {
     let testSuiteStubs: sinon.SinonStub[] = [];
@@ -1075,6 +1077,155 @@ suite('Context Inclusion Tests (New)', () => {
         };
         assert.deepStrictEqual(contextUsed, expectedContext);
         assert.ok(pathIsAbsoluteStub.calledWith(includePathString), 'path.isAbsolute was not called with the include string');
+    });
+
+    test('Should skip include outside workspace (relative path)', async () => {
+        mockJinjerConfig.contextFile = 'main_includes_outside_relative.json';
+
+        const mainContent = {
+            "mainVal": "m1",
+            "_jinjer_include_contexts": ["../outside_file.json"]
+        };
+        const outsideContent = { "outsideVal": "val_outside" };
+
+        mockFileContents.set(getFixtureUri('main_includes_outside_relative.json').fsPath, JSON.stringify(mainContent));
+        const outsideFilePath = path.resolve(mockWorkspaceFolder.uri.fsPath, '../outside_file.json');
+        mockFileContents.set(outsideFilePath, JSON.stringify(outsideContent));
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        const contextUsed = renderStringSpy.lastCall.args[1];
+        assert.deepStrictEqual(contextUsed, {
+            "mainVal": "m1",
+            "_jinjer_include_contexts": ["../outside_file.json"]
+        }, "Context should not contain data from outside_file.json");
+
+        assert.ok(consoleWarnSpy.calledWith(sinon.match(/is outside the current workspace/)), 'Expected console.warn for outside workspace');
+        assert.ok(consoleWarnSpy.calledWith(sinon.match(path.basename(outsideFilePath))), 'Warning should mention the problematic file path');
+    });
+
+    test('Should skip include outside workspace (absolute path)', async () => {
+        mockJinjerConfig.contextFile = 'main_includes_outside_absolute.json';
+        const tempDir = require('os').tmpdir();
+        const absoluteOutsidePath = path.normalize(path.join(tempDir, 'jinjer_test_outside_abs.json'));
+
+        const mainContent = {
+            "mainVal": "m2",
+            "_jinjer_include_contexts": [absoluteOutsidePath]
+        };
+        const outsideContent = { "outsideAbsVal": "val_abs_outside" };
+
+        mockFileContents.set(getFixtureUri('main_includes_outside_absolute.json').fsPath, JSON.stringify(mainContent));
+        mockFileContents.set(absoluteOutsidePath, JSON.stringify(outsideContent));
+
+        const pathIsAbsoluteStub = sinon.stub(path, 'isAbsolute').callsFake((p: string) => {
+            if (p === absoluteOutsidePath) return true;
+            return require('path').posix.isAbsolute(p) || require('path').win32.isAbsolute(p);
+        });
+        testSuiteStubs.push(pathIsAbsoluteStub);
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        const contextUsed = renderStringSpy.lastCall.args[1];
+        assert.deepStrictEqual(contextUsed, {
+            "mainVal": "m2",
+            "_jinjer_include_contexts": [absoluteOutsidePath]
+        }, "Context should not contain data from absolute_outside_file.json");
+
+        assert.ok(consoleWarnSpy.calledWith(sinon.match(/is outside the current workspace/)), 'Expected console.warn for outside workspace');
+        assert.ok(consoleWarnSpy.calledWith(sinon.match(path.basename(absoluteOutsidePath))), 'Warning should mention the problematic file path');
+    });
+
+    test('Should load include inside workspace (absolute path)', async () => {
+        mockJinjerConfig.contextFile = 'main_includes_inside_absolute.json';
+        const absoluteInsidePath = path.join(mockWorkspaceFolder.uri.fsPath, 'included_abs_inside.json');
+
+        const mainContent = {
+            "mainVal": "m3",
+            "_jinjer_include_contexts": [absoluteInsidePath]
+        };
+        const insideContent = { "insideAbsVal": "val_abs_inside" };
+
+        mockFileContents.set(getFixtureUri('main_includes_inside_absolute.json').fsPath, JSON.stringify(mainContent));
+        mockFileContents.set(absoluteInsidePath, JSON.stringify(insideContent));
+
+        const pathIsAbsoluteStub = sinon.stub(path, 'isAbsolute').callsFake((p: string) => {
+            if (p === absoluteInsidePath) return true;
+            return require('path').posix.isAbsolute(p) || require('path').win32.isAbsolute(p);
+        });
+        testSuiteStubs.push(pathIsAbsoluteStub);
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        const contextUsed = renderStringSpy.lastCall.args[1];
+        assert.deepStrictEqual(contextUsed, {
+            "mainVal": "m3",
+            "insideAbsVal": "val_abs_inside",
+            "_jinjer_include_contexts": [absoluteInsidePath]
+        }, "Context should contain data from absolute_inside_file.json");
+
+        const warningCall = consoleWarnSpy.getCalls().find(call => call.args.some((arg: string) => typeof arg === 'string' && arg.includes('is outside the current workspace')));
+        assert.strictEqual(warningCall, undefined, 'Should not warn for valid absolute path inside workspace');
+    });
+
+    test('Should load absolute include when no workspace is open', async () => {
+        // Simulate no workspace being open
+        const getWorkspaceFolderStubInstance = testSuiteStubs.find(s => s.stub && s.stub.name === 'getWorkspaceFolder'); // Assuming stubs are named or identifiable
+        if (getWorkspaceFolderStubInstance && (getWorkspaceFolderStubInstance as sinon.SinonStub).name === 'getWorkspaceFolder') { // Check if it's the correct stub
+            (getWorkspaceFolderStubInstance as sinon.SinonStub).returns(undefined);
+        } else {
+            // This is a fallback or error if the specific stub isn't found as expected.
+            // This indicates a potential issue in how stubs are stored or named in setup.
+            // For this test, we'll proceed, but ideally the stub should be precisely controlled.
+            console.warn("Test 'Should load absolute include when no workspace is open': Could not reliably modify getWorkspaceFolder stub. It might have been already restored or not named.");
+            // If it's critical, re-stub it and add to testSuiteStubs for this test only.
+            const tempGetWorkspaceFolderStub = sinon.stub(vscode.workspace, 'getWorkspaceFolder').returns(undefined);
+            testSuiteStubs.push(tempGetWorkspaceFolderStub); // Ensure this temporary stub is cleaned up
+        }
+
+        const looseFileDir = require('os').tmpdir();
+        const looseFileName = 'loosefile_for_no_ws_test.j2';
+        const looseFileUri = vscode.Uri.file(path.join(looseFileDir, looseFileName));
+
+        if (activeTextEditorStub && typeof activeTextEditorStub.restore === 'function') {
+            activeTextEditorStub.restore();
+        }
+        activeTextEditorStub = sinon.stub(vscode.window, 'activeTextEditor').returns({
+            document: { uri: looseFileUri, fileName: looseFileUri.fsPath, getText: () => "{{mainVal}} {{absVal}}" }
+        } as any);
+        testSuiteStubs.push(activeTextEditorStub);
+
+        mockJinjerConfig.contextFile = 'main_abs_include_no_workspace.json';
+        const absoluteIncludePath = path.resolve(require('os').tmpdir(), 'abs_data_no_ws.json');
+
+        const mainContent = { "mainVal": "m4", "_jinjer_include_contexts": [absoluteIncludePath] };
+        const includeContent = { "absVal": "val_abs_no_ws" };
+
+        // Main context file is relative to the loose file itself
+        mockFileContents.set(path.join(looseFileDir, 'main_abs_include_no_workspace.json'), JSON.stringify(mainContent));
+        mockFileContents.set(absoluteIncludePath, JSON.stringify(includeContent));
+
+        const pathIsAbsoluteStub = sinon.stub(path, 'isAbsolute').callsFake((p: string) => {
+            if (p === absoluteIncludePath) return true;
+            return require('path').posix.isAbsolute(p) || require('path').win32.isAbsolute(p);
+        });
+        testSuiteStubs.push(pathIsAbsoluteStub);
+
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100);
+
+        const contextUsed = renderStringSpy.lastCall.args[1];
+        assert.deepStrictEqual(contextUsed, {
+            "mainVal": "m4",
+            "absVal": "val_abs_no_ws",
+            "_jinjer_include_contexts": [absoluteIncludePath]
+        }, "Context should load absolute path when no workspace is open");
+
+        const warningCall = consoleWarnSpy.getCalls().find(call => call.args.some((arg: string) => typeof arg === 'string' && arg.includes('is outside the current workspace')));
+        assert.strictEqual(warningCall, undefined, 'Should not warn about workspace boundary if no workspace is open');
     });
 });
 // --- End of Suite for Context Inclusion Tests (NEW, ISOLATED SETUP) ---
