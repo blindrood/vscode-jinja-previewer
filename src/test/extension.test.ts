@@ -1318,5 +1318,71 @@ suite('Context Inclusion Tests (New)', () => {
         const warningCall = consoleWarnSpy.getCalls().find(call => call.args.some((arg: string) => typeof arg === 'string' && arg.includes('is outside the current workspace')));
         assert.strictEqual(warningCall, undefined, 'Should not warn about workspace boundary if no workspace is open');
     });
+
+    test('Should correctly merge context when an empty YAML file is included', async () => {
+        // This test uses the files created for this specific bug:
+        // - main_empty_yaml_include.json (main context, includes others)
+        // - data_before_empty.json (data that should persist)
+        // - empty.yaml (the problematic empty YAML file)
+        // - data_after_empty.json (data that should also be loaded, and potentially overwrite)
+        mockJinjerConfig.contextFile = 'main_empty_yaml_include.json'; // Set the main context file for the test
+
+        // Define the content of the files
+        const mainContent = {
+            "message": "Main context",
+            "_jinjer_include_contexts": [ // Using default include key for this test suite
+                "./data_before_empty.json",
+                "./empty.yaml",
+                "./data_after_empty.json"
+            ]
+        };
+        const dataBeforeContent = {
+            "data_before": "This data should persist",
+            "shared_key": "from_before"
+        };
+        const emptyYamlContent = "# This YAML is empty"; // Or just ""
+        const dataAfterContent = {
+            "data_after": "This data should also be present",
+            "shared_key": "from_after" // This should overwrite the one from data_before
+        };
+
+        // Set the mock file contents
+        mockFileContents.set(getFixtureUri('main_empty_yaml_include.json').fsPath, JSON.stringify(mainContent));
+        mockFileContents.set(getFixtureUri('data_before_empty.json').fsPath, JSON.stringify(dataBeforeContent));
+        mockFileContents.set(getFixtureUri('empty.yaml').fsPath, emptyYamlContent);
+        mockFileContents.set(getFixtureUri('data_after_empty.json').fsPath, JSON.stringify(dataAfterContent));
+
+        // Trigger the preview update to load and process context
+        await vscode.commands.executeCommand('jinjer.preview');
+        await delay(100); // Allow async operations to complete
+
+        // Assert that Nunjucks' renderString was called
+        assert.ok(renderStringSpy.called, 'Nunjucks renderString was not called');
+
+        // Get the context that was actually passed to Nunjucks
+        const contextUsedByNunjucks = renderStringSpy.lastCall.args[1];
+
+        // Define the expected final context
+        const expectedContext = {
+            "message": "Main context",
+            "data_before": "This data should persist", // From data_before_empty.json
+            "data_after": "This data should also be present", // From data_after_empty.json
+            "shared_key": "from_after", // Overwritten by data_after_empty.json
+            "_jinjer_include_contexts": [ // This key from the main file should remain
+                "./data_before_empty.json",
+                "./empty.yaml",
+                "./data_after_empty.json"
+            ]
+        };
+
+        // Perform the assertion
+        assert.deepStrictEqual(contextUsedByNunjucks, expectedContext, "Context was not merged correctly with an empty YAML include.");
+
+        // Also check that console.warn was called for the empty YAML file
+        assert.ok(
+            consoleWarnSpy.calledWith(sinon.match(/YAML context file .*empty.yaml is empty or contains only comments. Returning empty object./)),
+            "Expected console.warn for empty YAML file."
+        );
+    });
 });
 // --- End of Suite for Context Inclusion Tests (NEW, ISOLATED SETUP) ---
