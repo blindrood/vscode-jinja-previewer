@@ -3,7 +3,7 @@
   "displayName": "jinjer",
   "icon": "logo.png",
   "description": "Jinja2 Previewer - Now with more features!",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "engines": {
     "vscode": "^1.101.0"
   },
@@ -76,8 +76,8 @@
     "@types/nunjucks": "^3.2.6",
     "@types/sinon": "^17.0.4",
     "@types/vscode": "^1.101.0",
-    "@typescript-eslint/eslint-plugin": "^8.34.1",
-    "@typescript-eslint/parser": "^8.34.1",
+    "@typescript-eslint/eslint-plugin": "^8.35.0",
+    "@typescript-eslint/parser": "^8.35.0",
     "@vscode/test-electron": "^2.5.2",
     "esbuild": "^0.24.2",
     "eslint": "^9.29.0",
