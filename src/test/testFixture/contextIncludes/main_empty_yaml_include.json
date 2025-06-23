@@ -1,0 +1,8 @@
+{
+    "message": "Main context",
+    "jinjer_includes": [
+        "./data_before_empty.json",
+        "./empty.yaml",
+        "./data_after_empty.json"
+    ]
+}

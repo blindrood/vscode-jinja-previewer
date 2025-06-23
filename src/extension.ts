@@ -351,9 +351,29 @@ async function parseContextFile(fileUri: vscode.Uri): Promise<any> {
         const fileExtension = path.extname(fileUri.fsPath).toLowerCase();
 
         if (fileExtension === '.json') {
-            return JSON.parse(fileString);
+            // For JSON, parsing an empty string is an error.
+            // Return {} for empty or invalid JSON to be consistent.
+            try {
+                // Handle case where fileString is empty or only whitespace, which is invalid JSON
+                if (fileString.trim() === '') {
+                    console.warn(`Jinjer: Context file ${fileUri.fsPath} is empty or contains only whitespace. Returning empty object.`);
+                    return {};
+                }
+                return JSON.parse(fileString);
+            } catch (e) {
+                vscode.window.showErrorMessage(`Error parsing JSON context file ${fileUri.fsPath}: ${e}`);
+                console.error(`Jinjer: ❌ Error parsing JSON context file ${fileUri.fsPath}:`, e);
+                return {}; // Return empty on error
+            }
         } else if (fileExtension === '.yaml' || fileExtension === '.yml') {
-            return yaml.load(fileString) as any;
+            const parsedYaml = yaml.load(fileString) as any;
+            // yaml.load returns undefined for an empty file or a file with only comments.
+            // We want to treat this as an empty object for consistent merging.
+            if (parsedYaml === undefined) {
+                console.warn(`Jinjer: YAML context file ${fileUri.fsPath} is empty or contains only comments. Returning empty object.`);
+                return {};
+            }
+            return parsedYaml;
         } else {
             vscode.window.showWarningMessage(`Unsupported context file format for ${fileUri.fsPath}. Please use .json or .yaml.`);
             return {};
