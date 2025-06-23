@@ -1,5 +1,6 @@
 const esbuild = require("esbuild");
 
+const pkg = require("./package.json");
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
 
@@ -35,7 +36,7 @@ async function main() {
 		sourcesContent: false,
 		platform: 'node',
 		outfile: 'dist/extension.js',
-		external: ['vscode'],
+		external: ['vscode', ...Object.keys(pkg.dependencies || {})],
 		logLevel: 'silent',
 		plugins: [
 			/* add to the end of plugins array */

@@ -3,10 +3,11 @@
   "displayName": "jinjer",
   "icon": "logo.png",
   "description": "Jinja2 Previewer - Now with more features!",
-  "version": "0.0.10",
+  "version": "0.0.12",
   "engines": {
-    "vscode": "^1.100.0"
+    "vscode": "^1.101.0"
   },
+  "packageManager": "pnpm@10.12.1",
   "categories": [
     "Other"
   ],
@@ -44,7 +45,10 @@
           "description": "The name of the per-workspace settings file (JSON). This file allows to override global Jinjer settings on a per-workspace basis."
         },
         "jinjer.contextIncludeKey": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "default": "_jinjer_include_contexts",
           "description": "The key in context files (JSON/YAML) that specifies an array of other context file paths to include and merge. Paths are relative to the file containing this key. Set to null or empty string to disable. This VS Code setting can be overridden for a specific workspace by defining `contextIncludeKey` (using the same value types) in the `.jinjer-settings.json` file."
         }
@@ -68,15 +72,15 @@
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/mocha": "^10.0.10",
-    "@types/node": "~20.19.0",
+    "@types/node": "~20.19.1",
     "@types/nunjucks": "^3.2.6",
     "@types/sinon": "^17.0.4",
-    "@types/vscode": "^1.100.0",
-    "@typescript-eslint/eslint-plugin": "^8.34.0",
-    "@typescript-eslint/parser": "^8.34.0",
+    "@types/vscode": "^1.101.0",
+    "@typescript-eslint/eslint-plugin": "^8.34.1",
+    "@typescript-eslint/parser": "^8.34.1",
     "@vscode/test-electron": "^2.5.2",
     "esbuild": "^0.24.2",
-    "eslint": "^9.28.0",
+    "eslint": "^9.29.0",
     "npm-run-all": "^4.1.5",
     "sinon": "^20.0.0",
     "typescript": "^5.8.3"
