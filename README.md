@@ -43,6 +43,9 @@ You can configure the following settings directly in your VS Code `settings.json
 * **`jinjer.contextIncludeKey`**:
   * Description: Specifies a key within your JSON/YAML context files that lists other context files to be included and merged. Paths are resolved relative to the file containing this key, or can be absolute. Set to a string like `"_jinjer_include_contexts"` (default) or `null`/empty string to disable. This setting can also be specified in a `.jinjer-settings.json` file within your workspace, and the value in `.jinjer-settings.json` will take precedence.
   * Default: `"_jinjer_include_contexts"`
+* **`jinjer.installJinjaCompat`**:
+  * Description: Enable Nunjucks' experimental Jinja compatibility mode. When `true`, Nunjucks will attempt to behave more like Python's Jinja2. This can affect filters, global functions (e.g., making `range()` available), and other behaviors. See the Nunjucks API documentation for `installJinjaCompat` for more details. This setting can be overridden by the `installJinjaCompat` property in a `.jinjer-settings.json` file.
+  * Default: `false`
 
 ### Per-Workspace Settings File
 
@@ -67,6 +70,10 @@ This JSON file can contain the following properties:
   * Type: `string | null`
   * Description: Specifies the key name within context files that holds an array of other context file paths to include and merge. Paths are relative to the file containing this key, or can be absolute. Setting to `null` or an empty string disables the include feature for contexts loaded via this workspace settings file. This overrides the `jinjer.contextIncludeKey` from VS Code's global or user/workspace settings.
   * Example: `"_custom_includes_key"` or `null`
+* **`installJinjaCompat`**:
+  * Type: `boolean`
+  * Description: Overrides the `jinjer.installJinjaCompat` VS Code setting. Set to `true` to enable Nunjucks' experimental Jinja compatibility mode, or `false` to disable it.
+  * Example: `true`
 
 #### Example `.jinjer-settings.json`
 
@@ -78,7 +85,8 @@ This JSON file can contain the following properties:
     "src/templates/includes",
     "src/templates/layouts"
   ],
-  "contextIncludeKey": "_another_include_key"
+  "contextIncludeKey": "_another_include_key",
+  "installJinjaCompat": false
 }
 ```
 
