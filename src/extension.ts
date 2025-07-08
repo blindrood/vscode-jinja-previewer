@@ -110,10 +110,8 @@ export function activate(context: vscode.ExtensionContext) {
             searchPaths = [...new Set(searchPaths)];
             console.log("Jinjer: 🛠️ Nunjucks configured with search paths:", searchPaths);
 
-            const globalConfig = vscode.workspace.getConfiguration('jinjer');
-            const workspaceSettings = await getWorkspaceSettings(workspaceFolder?.uri);
-
             // Determine installJinjaCompat: workspace setting > global setting > default (false)
+            // globalConfig and workspaceSettings were already defined earlier in this function.
             let installJinjaCompat: boolean;
             if (workspaceSettings.hasOwnProperty('installJinjaCompat')) {
                 installJinjaCompat = !!workspaceSettings.installJinjaCompat; // Ensure boolean
@@ -130,6 +128,7 @@ export function activate(context: vscode.ExtensionContext) {
             };
 
             if (installJinjaCompat) {
+                // @ts-ignore - installJinjaCompat is an experimental option not yet in Nunjucks' ConfigureOptions type
                 nunjucksOptions.installJinjaCompat = true;
                 console.log("Jinjer: ✨ Jinja compatibility mode enabled for Nunjucks.");
             }
