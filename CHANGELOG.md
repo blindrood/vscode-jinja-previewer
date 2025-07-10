@@ -40,3 +40,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ## [0.0.13] - 2025-06-23
 
 - fixes bug #7
+
+## [0.0.14] - 2025-07-10
+
+- fixes bug #9

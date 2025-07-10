@@ -3,7 +3,7 @@
   "displayName": "jinjer",
   "icon": "logo.png",
   "description": "Jinja2 Previewer - Now with more features!",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "engines": {
     "vscode": "^1.101.0"
   },
