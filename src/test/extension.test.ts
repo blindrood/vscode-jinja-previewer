@@ -157,7 +157,7 @@ class MockLanguageModelAccessInformation implements vscode.LanguageModelAccessIn
 }
 
 // --- Main Test Suite ---
-/* suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
+ suite('Jinjer Extension - Per-Workspace Configuration Tests', () => {
     const mockFileContents: Map<string, string> = new Map(); // Initialized
     let mockGlobalConfig: { [key: string]: any } = {};   // Changed to let, initialized
 
@@ -362,7 +362,11 @@ class MockLanguageModelAccessInformation implements vscode.LanguageModelAccessIn
     });
 
     suite('1. Workspace Settings Override (.jinjer-settings.json)', () => {
-        const workspaceSettingsFilePath = path.join(mockWorkspaceFolder!.uri.fsPath, '.jinjer-settings.json');
+        const mockWorkspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!mockWorkspaceFolder) {
+            throw new Error('No workspace folder found. Did you open the extension test with a workspace?');
+        }
+        const workspaceSettingsFilePath = path.join(mockWorkspaceFolder.uri.fsPath, '.jinjer-settings.json');
         const globalContextFilePath = path.join(mockWorkspaceFolder!.uri.fsPath, 'global.context.json');
         const workspaceContextFilePath = path.join(mockWorkspaceFolder!.uri.fsPath, 'workspace.context.json');
         const includeTemplatePath = path.join(mockWorkspaceFolder!.uri.fsPath, 'includes', 'included.jinja');
@@ -736,10 +740,10 @@ class MockLanguageModelAccessInformation implements vscode.LanguageModelAccessIn
         });
     });
 
-});*/
+});
 
 // --- Suite for Context Inclusion Tests (NEW, ISOLATED SETUP) ---
-/* suite('Context Inclusion Tests (New)', () => {
+ suite('Context Inclusion Tests (New)', () => {
     let testSuiteStubs: sinon.SinonStub[] = [];
     let testSuiteSpies: sinon.SinonSpy[] = [];
     const mockFileContents = new Map<string, string>();
@@ -1372,5 +1376,5 @@ class MockLanguageModelAccessInformation implements vscode.LanguageModelAccessIn
             "Expected console.warn for empty YAML file."
         );
     });
-});*/
+});
 // --- End of Suite for Context Inclusion Tests (NEW, ISOLATED SETUP) ---

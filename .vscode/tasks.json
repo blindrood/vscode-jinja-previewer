@@ -59,6 +59,16 @@
 				"npm: watch-tests"
 			],
 			"problemMatcher": []
-		}
+		},
+        {
+            "label": "pnpm: compile",
+            "type": "shell",
+            "command": "pnpm run compile",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
 	]
 }

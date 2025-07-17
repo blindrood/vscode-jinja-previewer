@@ -9,6 +9,7 @@ let activeDocument: vscode.TextDocument | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('✅ Jinjer Extension Activated!');
+    vscode.window.showInformationMessage('Jinjer extension is active!');
 
     const disposable = vscode.commands.registerCommand('jinjer.preview', async () => {
         const editor = vscode.window.activeTextEditor;

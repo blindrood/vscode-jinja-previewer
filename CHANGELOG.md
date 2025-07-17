@@ -41,6 +41,6 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 - fixes bug #7
 
-## [0.0.14] - 2025-07-10
+## [0.0.15] - 2025-07-10
 
 - fixes bug #9
