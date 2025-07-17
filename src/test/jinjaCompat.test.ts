@@ -5,7 +5,7 @@ suite('Jinja Compatibility Tests', () => {
     test('Should render dict.keys() correctly with installJinjaCompat', () => {
         const env = nunjucks.configure({ autoescape: true });
         // @ts-ignore - installJinjaCompat is an experimental option not yet in Nunjucks' types
-        env.installJinjaCompat();
+        nunjucks.installJinjaCompat();
 
         const template = '{% set test = {"key1": "value1"} %} {% for key in test.keys() %} {{key}} {% endfor %}';
         const result = env.renderString(template, {});

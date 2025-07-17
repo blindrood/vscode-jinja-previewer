@@ -2,3 +2,9 @@
     "test1": "{{value1}}",
     "test2": "{{value2}}"
 }
+
+{% set test = {"key1": "value1"} %}
+
+{% for key in test.keys() %}
+{{key}}
+{% endfor %}

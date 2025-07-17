@@ -11,7 +11,24 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "configurations": [
+    {
+      "name": "Run Jinjer",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/out/**/*.js"
+      ],
+      "preLaunchTask": "pnpm: compile"
+    }
+  ],
   "main": "./dist/extension.js",
   "publisher": "PSSolutions",
   "repository": {
@@ -83,8 +100,9 @@
     "@types/vscode": "^1.101.0",
     "@typescript-eslint/eslint-plugin": "^8.35.0",
     "@typescript-eslint/parser": "^8.35.0",
+    "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
-    "esbuild": "^0.24.2",
+    "esbuild": "^0.25.6",
     "eslint": "^9.29.0",
     "npm-run-all": "^4.1.5",
     "sinon": "^20.0.0",
@@ -92,6 +110,7 @@
   },
   "dependencies": {
     "@vscode/vsce": "^3.6.0",
+    "glob": "^11.0.3",
     "js-yaml": "^4.1.0",
     "nunjucks": "^3.2.4"
   }

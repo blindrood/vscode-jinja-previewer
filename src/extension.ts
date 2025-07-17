@@ -16,6 +16,7 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.window.showErrorMessage('No active editor.');
             return;
         }
+        vscode.window.showInformationMessage('Jinjer extension started!');
         activeDocument = editor.document;
 
         if (panel) {
@@ -127,19 +128,12 @@ export function activate(context: vscode.ExtensionContext) {
                 lstripBlocks: false,
             };
 
-            // if (installJinjaCompat) {
-            //     // @ts-ignore - installJinjaCompat is an experimental option not yet in Nunjucks' ConfigureOptions type
-            //     nunjucksOptions.installJinjaCompat = true;
-            //     console.log("Jinjer: ✨ Jinja compatibility mode enabled for Nunjucks.");
-            // }
-
-            const env = nunjucks.configure(searchPaths, nunjucksOptions);
-
             if (installJinjaCompat) {
-                // @ts-ignore - installJinjaCompat is an experimental option not yet in Nunjucks' types
-                env.installJinjaCompat();
+                nunjucks.installJinjaCompat();
                 console.log("Jinjer: ✨ Jinja compatibility mode enabled for Nunjucks.");
             }
+
+            const env = nunjucks.configure(searchPaths, nunjucksOptions);
             const renderedHtml = env.renderString(templateContent, contextData);
 
             if (panel) {
