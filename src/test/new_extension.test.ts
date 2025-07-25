@@ -187,6 +187,7 @@ suite('Per-Workspace Configuration Tests', () => {
     let nunjucksConfigureSpy: sinon.SinonSpy;
     let renderStringSpy: sinon.SinonSpy;
     let mockContext: vscode.ExtensionContext;
+    let mockWebviewPanel: { webview: { html: string } };
 
     suiteSetup(() => {
         mockContext = {
@@ -217,14 +218,12 @@ suite('Per-Workspace Configuration Tests', () => {
             index: 0
         };
 
-        stubs.push(sinon.stub(vscode.window, 'createWebviewPanel').returns({
+        mockWebviewPanel = {
             webview: {
                 html: '',
-                asWebviewUri: (uri: vscode.Uri) => uri,
             },
-            reveal: sinon.stub(),
-            onDidDispose: sinon.stub(),
-        } as any));
+        } as any;
+        stubs.push(sinon.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any));
         stubs.push(sinon.stub(vscode.window, 'showErrorMessage'));
 
         stubs.push(sinon.stub(vscode.workspace, 'getConfiguration').callsFake((section) => {
@@ -312,8 +311,7 @@ suite('Per-Workspace Configuration Tests', () => {
         await setupAndPreview('Hello {{ globalData.name }}');
 
         assert.ok(nunjucksConfigureSpy.called, 'Nunjucks.configure should have been called');
-        const webview = vscode.window.createWebviewPanel.getCall(0).returnValue.webview;
-        assert.ok(webview.html.includes('Hello Global Default'), `HTML was: ${webview.html}`);
+        assert.ok(mockWebviewPanel.webview.html.includes('Hello Global Default'), `HTML was: ${mockWebviewPanel.webview.html}`);
     });
 
     suite('1. Workspace Settings Override (.jinjer-settings.json)', () => {
@@ -343,23 +341,21 @@ suite('Per-Workspace Configuration Tests', () => {
 
         test('Should use contextFile from workspace settings', async () => {
             await setupAndPreview('Data: {{ ws.WS_data }}');
-            const webview = vscode.window.createWebviewPanel.getCall(0).returnValue.webview;
             assert.ok(
-                webview.html.includes('Data: From Workspace Context'),
-                `Expected workspace context, got: ${webview.html}`
+                mockWebviewPanel.webview.html.includes('Data: From Workspace Context'),
+                `Expected workspace context, got: ${mockWebviewPanel.webview.html}`
             );
             assert.ok(
-                !webview.html.includes('From Global Context'),
-                `Should not have loaded global context data: ${webview.html}`
+                !mockWebviewPanel.webview.html.includes('From Global Context'),
+                `Should not have loaded global context data: ${mockWebviewPanel.webview.html}`
             );
         });
 
         test('Should apply variableSuffix from workspace settings', async () => {
             await setupAndPreview('Suffix Test: {{ ws.WS_data }}');
-            const webview = vscode.window.createWebviewPanel.getCall(0).returnValue.webview;
             assert.ok(
-                webview.html.includes('Suffix Test: From Workspace Context'),
-                `Suffix 'ws' not applied correctly: ${webview.html}`
+                mockWebviewPanel.webview.html.includes('Suffix Test: From Workspace Context'),
+                `Suffix 'ws' not applied correctly: ${mockWebviewPanel.webview.html}`
             );
         });
 
@@ -373,10 +369,9 @@ suite('Per-Workspace Configuration Tests', () => {
                 Array.isArray(configureArgs) && configureArgs.includes(expectedSearchPath),
                 `Nunjucks configure args did not include workspace search path. Got: ${JSON.stringify(configureArgs)}`
             );
-            const webview = vscode.window.createWebviewPanel.getCall(0).returnValue.webview;
             assert.ok(
-                webview.html.includes('Include Test: Included Content (Workspace Path)'),
-                `Include from workspace path failed: ${webview.html}`
+                mockWebviewPanel.webview.html.includes('Include Test: Included Content (Workspace Path)'),
+                `Include from workspace path failed: ${mockWebviewPanel.webview.html}`
             );
         });
 
@@ -413,19 +408,17 @@ suite('Per-Workspace Configuration Tests', () => {
 
         test('Should use contextFile from global settings', async () => {
             await setupAndPreview('Data: {{ gFallback.GF_data }}');
-            const webview = vscode.window.createWebviewPanel.getCall(0).returnValue.webview;
             assert.ok(
-                webview.html.includes('Data: From Global Fallback Context'),
-                `Expected global fallback context, got: ${webview.html}`
+                mockWebviewPanel.webview.html.includes('Data: From Global Fallback Context'),
+                `Expected global fallback context, got: ${mockWebviewPanel.webview.html}`
             );
         });
 
         test('Should apply variableSuffix from global settings', async () => {
             await setupAndPreview('Suffix Test: {{ gFallback.GF_data }}');
-            const webview = vscode.window.createWebviewPanel.getCall(0).returnValue.webview;
             assert.ok(
-                webview.html.includes('Suffix Test: From Global Fallback Context'),
-                `Suffix 'gFallback' not applied correctly from global: ${webview.html}`
+                mockWebviewPanel.webview.html.includes('Suffix Test: From Global Fallback Context'),
+                `Suffix 'gFallback' not applied correctly from global: ${mockWebviewPanel.webview.html}`
             );
         });
 
@@ -439,10 +432,9 @@ suite('Per-Workspace Configuration Tests', () => {
                 Array.isArray(configureArgs) && configureArgs.includes(expectedSearchPath),
                 `Nunjucks configure args did not include global search path. Got: ${JSON.stringify(configureArgs)}`
             );
-            const webview = vscode.window.createWebviewPanel.getCall(0).returnValue.webview;
             assert.ok(
-                webview.html.includes('Include Test: Included Content (Global Fallback Path)'),
-                `Include from global fallback path failed: ${webview.html}`
+                mockWebviewPanel.webview.html.includes('Include Test: Included Content (Global Fallback Path)'),
+                `Include from global fallback path failed: ${mockWebviewPanel.webview.html}`
             );
         });
     });
@@ -472,8 +464,7 @@ suite('Per-Workspace Configuration Tests', () => {
             const expectedSearchPath = path.resolve(mockWorkspaceFolder!.uri.fsPath, includeDir1);
             const configureArgs = nunjucksConfigureSpy.lastCall.args[0];
             assert.ok(Array.isArray(configureArgs) && configureArgs.includes(expectedSearchPath), `Nunjucks not configured with single custom path. Got: ${JSON.stringify(configureArgs)}`);
-            const webview = vscode.window.createWebviewPanel.getCall(0).returnValue.webview;
-            assert.ok(webview.html.includes("Content from single custom path"), `HTML: ${webview.html}`);
+            assert.ok(mockWebviewPanel.webview.html.includes("Content from single custom path"), `HTML: ${mockWebviewPanel.webview.html}`);
         });
 
         test('3.2 Should handle customSearchPath as an array of strings', async () => {
@@ -491,9 +482,8 @@ suite('Per-Workspace Configuration Tests', () => {
             assert.ok(
                 Array.isArray(configureArgs) && configureArgs.includes(expectedSearchPath1), `Nunjucks not configured with first custom path. Got: ${JSON.stringify(configureArgs)}`);
             assert.ok(Array.isArray(configureArgs) && configureArgs.includes(expectedSearchPath2), `Nunjucks not configured with second custom path. Got: ${JSON.stringify(configureArgs)}`);
-            const webview = vscode.window.createWebviewPanel.getCall(0).returnValue.webview;
-            assert.ok(webview.html.includes("Content from dir1"), `HTML missing content from dir1: ${webview.html}`);
-            assert.ok(webview.html.includes("Content from dir2"), `HTML missing content from dir2: ${webview.html}`);
+            assert.ok(mockWebviewPanel.webview.html.includes("Content from dir1"), `HTML missing content from dir1: ${mockWebviewPanel.webview.html}`);
+            assert.ok(mockWebviewPanel.webview.html.includes("Content from dir2"), `HTML missing content from dir2: ${mockWebviewPanel.webview.html}`);
         });
 
         test('3.3 Should correctly resolve relative paths like `../` in customSearchPath', async () => {
@@ -511,10 +501,9 @@ suite('Per-Workspace Configuration Tests', () => {
                 Array.isArray(configureArgs) && configureArgs.includes(expectedSearchPath),
                 `Nunjucks configure args did not include resolved relative path. Expected dir: ${expectedSearchPath}. Got: ${JSON.stringify(configureArgs)}`
             );
-            const webview = vscode.window.createWebviewPanel.getCall(0).returnValue.webview;
             assert.ok(
-                webview.html.includes("Content from ../shared_templates/outer_shared.jinja"),
-                `Include from relative path failed: ${webview.html}`
+                mockWebviewPanel.webview.html.includes("Content from ../shared_templates/outer_shared.jinja"),
+                `Include from relative path failed: ${mockWebviewPanel.webview.html}`
             );
         });
     });
@@ -537,19 +526,17 @@ suite('Per-Workspace Configuration Tests', () => {
 
         test('Should use default context file name ".jinjer.json"', async () => {
             await setupAndPreview('Data: {{ default_data }}');
-            const webview = vscode.window.createWebviewPanel.getCall(0).returnValue.webview;
             assert.ok(
-                webview.html.includes('Data: From Default .jinjer.json'),
-                `Expected data from default .jinjer.json, got: ${webview.html}`
+                mockWebviewPanel.webview.html.includes('Data: From Default .jinjer.json'),
+                `Expected data from default .jinjer.json, got: ${mockWebviewPanel.webview.html}`
             );
         });
 
         test('Should apply no variableSuffix by default (or extension default)', async () => {
             await setupAndPreview('No Suffix Test: {{ default_data }}');
-            const webview = vscode.window.createWebviewPanel.getCall(0).returnValue.webview;
             assert.ok(
-                webview.html.includes('No Suffix Test: From Default .jinjer.json'),
-                `No suffix should be applied by default: ${webview.html}`
+                mockWebviewPanel.webview.html.includes('No Suffix Test: From Default .jinjer.json'),
+                `No suffix should be applied by default: ${mockWebviewPanel.webview.html}`
             );
         });
 
@@ -566,20 +553,18 @@ suite('Per-Workspace Configuration Tests', () => {
             const filteredConfigureArgs = configureArgs.filter((p: string | undefined) => p !== undefined && p !== null);
             assert.strictEqual(filteredConfigureArgs.length, 1, `Expected only template directory in search paths. Got: ${JSON.stringify(filteredConfigureArgs)}`);
 
-            const webview = vscode.window.createWebviewPanel.getCall(0).returnValue.webview;
             assert.ok(
-                webview.html.includes('Include Test: Locally Included Content'),
-                `Local include failed: ${webview.html}`
+                mockWebviewPanel.webview.html.includes('Include Test: Locally Included Content'),
+                `Local include failed: ${mockWebviewPanel.webview.html}`
             );
         });
 
         test('Should handle missing context file gracefully (render with empty context)', async () => {
             mockFileContents.delete(defaultContextFilePath);
             await setupAndPreview('Hello {{ name }}');
-            const webview = vscode.window.createWebviewPanel.getCall(0).returnValue.webview;
             assert.ok(
-                webview.html.includes('Hello <!-- name -->') || webview.html.includes('Hello <span class="jinja-error">name is undefined</span>') || webview.html.includes('Hello '),
-                `Expected graceful render with missing context. Got: ${webview.html}`
+                mockWebviewPanel.webview.html.includes('Hello <!-- name -->') || mockWebviewPanel.webview.html.includes('Hello <span class="jinja-error">name is undefined</span>') || mockWebviewPanel.webview.html.includes('Hello '),
+                `Expected graceful render with missing context. Got: ${mockWebviewPanel.webview.html}`
             );
             assert.ok((vscode.window.showErrorMessage as sinon.SinonStub).calledWith(sinon.match(/Context file ".*?" not found/)),
                 "showErrorMessage should have been called for missing context file");
