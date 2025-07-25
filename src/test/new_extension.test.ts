@@ -24,10 +24,9 @@ suite('Jinja Compatibility Tests', () => {
 
 suite('Extension Test Suite', () => {
     let stubs: sinon.SinonStub[] = [];
-    let mockContext: vscode.ExtensionContext;
 
-    suiteSetup(() => {
-        mockContext = {
+    before(async () => {
+        const mockContext: vscode.ExtensionContext = {
             subscriptions: [],
             workspaceState: { get: () => {}, update: () => Promise.resolve(), keys: () => [] } as vscode.Memento,
             globalState: { get: () => {}, update: () => Promise.resolve(), keys: () => [] } as vscode.Memento,
@@ -36,10 +35,10 @@ suite('Extension Test Suite', () => {
             logPath: '/fake/log/path',
             asAbsolutePath: (relativePath: string) => path.resolve('/fake/extension/path', relativePath),
         } as any;
-        activate(mockContext);
+        await activate(mockContext);
     });
 
-    suiteTeardown(() => {
+    after(() => {
         if (deactivate) {
             deactivate();
         }
@@ -186,27 +185,7 @@ suite('Per-Workspace Configuration Tests', () => {
     let mockWorkspaceFolder: vscode.WorkspaceFolder | undefined;
     let nunjucksConfigureSpy: sinon.SinonSpy;
     let renderStringSpy: sinon.SinonSpy;
-    let mockContext: vscode.ExtensionContext;
     let mockWebviewPanel: { webview: { html: string } };
-
-    suiteSetup(() => {
-        mockContext = {
-            subscriptions: [],
-            workspaceState: { get: () => {}, update: () => Promise.resolve(), keys: () => [] } as vscode.Memento,
-            globalState: { get: () => {}, update: () => Promise.resolve(), keys: () => [] } as vscode.Memento,
-            extensionPath: '/fake/extension/path',
-            storagePath: '/fake/storage/path',
-            logPath: '/fake/log/path',
-            asAbsolutePath: (relativePath: string) => path.resolve('/fake/extension/path', relativePath),
-        } as any;
-        activate(mockContext);
-    });
-
-    suiteTeardown(() => {
-        if (deactivate) {
-            deactivate();
-        }
-    });
 
     setup(() => {
         mockFileContents.clear();
@@ -622,28 +601,6 @@ suite('Context Inclusion Tests (New)', () => {
     let renderStringSpy: sinon.SinonSpy;
     let consoleWarnSpy: sinon.SinonSpy;
     let nunjucksConfigureSpy: sinon.SinonSpy;
-    let mockContext: vscode.ExtensionContext;
-
-    suiteSetup(async () => {
-        mockContext = {
-            subscriptions: [],
-            workspaceState: { get: () => {}, update: () => Promise.resolve(), keys: () => [] } as vscode.Memento,
-            globalState: { get: () => {}, update: () => Promise.resolve(), keys: () => [] } as vscode.Memento,
-            extensionPath: '/fake/extension/path',
-            storagePath: '/fake/storage/path',
-            logPath: '/fake/log/path',
-            asAbsolutePath: (relativePath: string) => path.resolve('/fake/extension/path', relativePath),
-        } as any;
-        if (activate) {
-            await activate(mockContext);
-        }
-    });
-
-    suiteTeardown(() => {
-        if (deactivate) {
-            deactivate();
-        }
-    });
 
     setup(async () => {
         mockFileContents.clear();
