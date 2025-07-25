@@ -315,13 +315,23 @@ suite('Per-Workspace Configuration Tests', () => {
     });
 
     suite('1. Workspace Settings Override (.jinjer-settings.json)', () => {
-        const workspaceSettingsFilePath = path.join(mockWorkspaceFolder!.uri.fsPath, '.jinjer-settings.json');
-        const globalContextFilePath = path.join(mockWorkspaceFolder!.uri.fsPath, 'global.context.json');
-        const workspaceContextFilePath = path.join(mockWorkspaceFolder!.uri.fsPath, 'workspace.context.json');
-        const includeTemplatePath = path.join(mockWorkspaceFolder!.uri.fsPath, 'includes', 'included.jinja');
+        let workspaceSettingsFilePath: string;
+        let globalContextFilePath: string;
+        let workspaceContextFilePath: string;
+        let includeTemplatePath: string;
         const workspaceSearchPath = 'includes';
 
         setup(() => {
+            mockWorkspaceFolder = {
+                uri: vscode.Uri.file(path.resolve('/fake/workspace')),
+                name: 'FakeWorkspace',
+                index: 0
+            };
+            workspaceSettingsFilePath = path.join(mockWorkspaceFolder.uri.fsPath, '.jinjer-settings.json');
+            globalContextFilePath = path.join(mockWorkspaceFolder.uri.fsPath, 'global.context.json');
+            workspaceContextFilePath = path.join(mockWorkspaceFolder.uri.fsPath, 'workspace.context.json');
+            includeTemplatePath = path.join(mockWorkspaceFolder.uri.fsPath, 'includes', 'included.jinja');
+
             mockGlobalConfig.contextFile = 'global.context.json';
             mockGlobalConfig.variableSuffix = 'g';
             mockGlobalConfig.customSearchPath = 'global_includes';
@@ -389,12 +399,20 @@ suite('Per-Workspace Configuration Tests', () => {
     });
 
     suite('2. Fallback to Global Settings (No .jinjer-settings.json)', () => {
-        const globalContextFilePath = path.join(mockWorkspaceFolder!.uri.fsPath, 'global-fallback.context.json');
-        const globalIncludeTemplatePath = path.join(mockWorkspaceFolder!.uri.fsPath, 'global_includes_fallback', 'included_fallback.jinja');
+        let globalContextFilePath: string;
+        let globalIncludeTemplatePath: string;
         const globalSearchPath = 'global_includes_fallback';
 
         setup(() => {
-            mockFileContents.delete(path.join(mockWorkspaceFolder!.uri.fsPath, '.jinjer-settings.json'));
+            mockWorkspaceFolder = {
+                uri: vscode.Uri.file(path.resolve('/fake/workspace')),
+                name: 'FakeWorkspace',
+                index: 0
+            };
+            globalContextFilePath = path.join(mockWorkspaceFolder.uri.fsPath, 'global-fallback.context.json');
+            globalIncludeTemplatePath = path.join(mockWorkspaceFolder.uri.fsPath, 'global_includes_fallback', 'included_fallback.jinja');
+
+            mockFileContents.delete(path.join(mockWorkspaceFolder.uri.fsPath, '.jinjer-settings.json'));
 
             Object.keys(mockGlobalConfig).forEach(key => delete mockGlobalConfig[key]);
             mockGlobalConfig.contextFile = 'global-fallback.context.json';
@@ -440,15 +458,26 @@ suite('Per-Workspace Configuration Tests', () => {
     });
 
     suite('3. customSearchPath Variations (via .jinjer-settings.json)', () => {
-        const workspaceSettingsFilePath = path.join(mockWorkspaceFolder!.uri.fsPath, '.jinjer-settings.json');
+        let workspaceSettingsFilePath: string;
         const includeDir1 = 'custom_includes_1';
         const includeDir2 = 'custom_includes_2';
-        const includeFile1Path = path.join(mockWorkspaceFolder!.uri.fsPath, includeDir1, 'file1.jinja');
-        const includeFile2Path = path.join(mockWorkspaceFolder!.uri.fsPath, includeDir2, 'file2.jinja');
-        const relativeIncludeFileOuterPath = path.join(mockWorkspaceFolder!.uri.fsPath, '..', 'shared_templates', 'outer_shared.jinja');
-        const resolvedRelativeOuterPath = path.resolve(mockWorkspaceFolder!.uri.fsPath, '..', 'shared_templates', 'outer_shared.jinja');
+        let includeFile1Path: string;
+        let includeFile2Path: string;
+        let relativeIncludeFileOuterPath: string;
+        let resolvedRelativeOuterPath: string;
 
         setup(() => {
+            mockWorkspaceFolder = {
+                uri: vscode.Uri.file(path.resolve('/fake/workspace')),
+                name: 'FakeWorkspace',
+                index: 0
+            };
+            workspaceSettingsFilePath = path.join(mockWorkspaceFolder.uri.fsPath, '.jinjer-settings.json');
+            includeFile1Path = path.join(mockWorkspaceFolder.uri.fsPath, includeDir1, 'file1.jinja');
+            includeFile2Path = path.join(mockWorkspaceFolder.uri.fsPath, includeDir2, 'file2.jinja');
+            relativeIncludeFileOuterPath = path.join(mockWorkspaceFolder.uri.fsPath, '..', 'shared_templates', 'outer_shared.jinja');
+            resolvedRelativeOuterPath = path.resolve(mockWorkspaceFolder.uri.fsPath, '..', 'shared_templates', 'outer_shared.jinja');
+
             Object.keys(mockGlobalConfig).forEach(key => delete mockGlobalConfig[key]);
             mockGlobalConfig.settingsFile = '.jinjer-settings.json';
             mockFileContents.set(path.join(mockWorkspaceFolder!.uri.fsPath, '.jinjer.json'), JSON.stringify({ msg: "default" }));
@@ -509,11 +538,19 @@ suite('Per-Workspace Configuration Tests', () => {
     });
 
     suite('4. No Settings File and No Global Config (Defaults)', () => {
-        const defaultContextFilePath = path.join(mockWorkspaceFolder!.uri.fsPath, '.jinjer.json');
-        const localIncludeFilePath = path.join(mockWorkspaceFolder!.uri.fsPath, 'local_include.jinja');
+        let defaultContextFilePath: string;
+        let localIncludeFilePath: string;
 
         setup(() => {
-            mockFileContents.delete(path.join(mockWorkspaceFolder!.uri.fsPath, '.jinjer-settings.json'));
+            mockWorkspaceFolder = {
+                uri: vscode.Uri.file(path.resolve('/fake/workspace')),
+                name: 'FakeWorkspace',
+                index: 0
+            };
+            defaultContextFilePath = path.join(mockWorkspaceFolder.uri.fsPath, '.jinjer.json');
+            localIncludeFilePath = path.join(mockWorkspaceFolder.uri.fsPath, 'local_include.jinja');
+
+            mockFileContents.delete(path.join(mockWorkspaceFolder.uri.fsPath, '.jinjer-settings.json'));
 
             Object.keys(mockGlobalConfig).forEach(key => delete mockGlobalConfig[key]);
             mockGlobalConfig.contextFile = undefined;
