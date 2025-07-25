@@ -24,28 +24,28 @@ suite('Jinja Compatibility Tests', () => {
     });
 });
 
+before(async () => {
+    const mockContext: vscode.ExtensionContext = {
+        subscriptions: [],
+        workspaceState: { get: () => {}, update: () => Promise.resolve(), keys: () => [] } as vscode.Memento,
+        globalState: { get: () => {}, update: () => Promise.resolve(), keys: () => [] } as vscode.Memento,
+        extensionPath: '/fake/extension/path',
+        storagePath: '/fake/storage/path',
+        logPath: '/fake/log/path',
+        asAbsolutePath: (relativePath: string) => path.resolve('/fake/extension/path', relativePath),
+    } as any;
+    await activate(mockContext);
+});
+
+after(() => {
+    if (deactivate) {
+        deactivate();
+    }
+});
+
 suite('Extension Test Suite', () => {
     let stubs: sinon.SinonStub[] = [];
     let sandbox: sinon.SinonSandbox;
-
-    suiteSetup(async () => {
-        const mockContext: vscode.ExtensionContext = {
-            subscriptions: [],
-            workspaceState: { get: () => {}, update: () => Promise.resolve(), keys: () => [] } as vscode.Memento,
-            globalState: { get: () => {}, update: () => Promise.resolve(), keys: () => [] } as vscode.Memento,
-            extensionPath: '/fake/extension/path',
-            storagePath: '/fake/storage/path',
-            logPath: '/fake/log/path',
-            asAbsolutePath: (relativePath: string) => path.resolve('/fake/extension/path', relativePath),
-        } as any;
-        await activate(mockContext);
-    });
-
-    suiteTeardown(() => {
-        if (deactivate) {
-            deactivate();
-        }
-    });
 
     setup(() => {
         sandbox = sinon.createSandbox();
