@@ -5,6 +5,8 @@ import * as path from 'path';
 import * as nunjucks from 'nunjucks';
 import { activate, deactivate } from '../extension';
 
+let sandbox: sinon.SinonSandbox;
+
 // Helper to delay execution
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -24,6 +26,7 @@ suite('Jinja Compatibility Tests', () => {
 
 suite('Extension Test Suite', () => {
     let stubs: sinon.SinonStub[] = [];
+    let sandbox: sinon.SinonSandbox;
 
     suiteSetup(async () => {
         const mockContext: vscode.ExtensionContext = {
@@ -44,9 +47,14 @@ suite('Extension Test Suite', () => {
         }
     });
 
+    setup(() => {
+        sandbox = sinon.createSandbox();
+    });
+
     teardown(() => {
         stubs.forEach(stub => stub.restore());
         stubs = [];
+        sandbox.restore();
     });
 
     async function setupAndPreview(templateContent: string, templateFileName: string = 'test.jinja', context: any = null) {
@@ -61,8 +69,7 @@ suite('Extension Test Suite', () => {
             },
         };
 
-        const activeTextEditorStub = sinon.stub(vscode.window, 'activeTextEditor').value(mockEditor);
-        stubs.push(activeTextEditorStub);
+        const activeTextEditorStub = sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
 
         const mockWebviewPanel = {
             webview: {
@@ -72,13 +79,10 @@ suite('Extension Test Suite', () => {
             reveal: sinon.stub(),
             onDidDispose: sinon.stub(),
         };
-        const createWebviewPanelStub = sinon.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
-        stubs.push(createWebviewPanelStub);
+        const createWebviewPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
 
         if (context) {
-            const readFileSyncStub = sinon.stub(require('fs'), 'readFileSync');
-            readFileSyncStub.withArgs(path.resolve('/fake/workspace/.jinjer.json')).returns(JSON.stringify(context));
-            stubs.push(readFileSyncStub);
+            const readFileSyncStub = sandbox.replace(require('fs'), 'readFileSync', sinon.stub().returns(JSON.stringify(context)));
         }
 
         await vscode.commands.executeCommand('jinjer.preview');
@@ -188,6 +192,7 @@ suite('Per-Workspace Configuration Tests', () => {
     let mockWebviewPanel: { webview: { html: string } };
 
     setup(() => {
+        sandbox = sinon.createSandbox();
         mockFileContents.clear();
         Object.keys(mockGlobalConfig).forEach(key => delete mockGlobalConfig[key]);
         mockWorkspaceConfig = {};
@@ -223,15 +228,15 @@ suite('Per-Workspace Configuration Tests', () => {
 
         stubs.push(sinon.stub(vscode.workspace, 'getWorkspaceFolder').callsFake(() => mockWorkspaceFolder));
 
-        stubs.push(sinon.stub(vscode.workspace.fs, 'readFile').callsFake(async (uri: vscode.Uri) => {
+        sandbox.stub(vscode.workspace.fs, 'readFile').callsFake(async (uri: vscode.Uri) => {
             const filePath = uri.fsPath;
             if (mockFileContents.has(filePath)) {
                 return Buffer.from(mockFileContents.get(filePath)!);
             }
             throw vscode.FileSystemError.FileNotFound(uri);
-        }));
+        });
 
-        stubs.push(sinon.stub(vscode.workspace.fs, 'stat').callsFake(async (uri: vscode.Uri) => {
+        sandbox.stub(vscode.workspace.fs, 'stat').callsFake(async (uri: vscode.Uri) => {
             const filePath = uri.fsPath;
             if (mockFileContents.has(filePath) || filePath === mockWorkspaceFolder?.uri.fsPath) {
                 const isDirectory = filePath === mockWorkspaceFolder?.uri.fsPath;
@@ -243,7 +248,7 @@ suite('Per-Workspace Configuration Tests', () => {
                 } as vscode.FileStat;
             }
             throw vscode.FileSystemError.FileNotFound(uri);
-        }));
+        });
 
         nunjucksConfigureSpy = sinon.spy(nunjucks, 'configure');
         spies.push(nunjucksConfigureSpy);
@@ -603,6 +608,7 @@ suite('Context Inclusion Tests (New)', () => {
     let nunjucksConfigureSpy: sinon.SinonSpy;
 
     setup(async () => {
+        sandbox = sinon.createSandbox();
         mockFileContents.clear();
         Object.keys(mockJinjerConfig).forEach(key => delete mockJinjerConfig[key]);
         mockJinjerConfig.contextIncludeKey = '_jinjer_include_contexts';
@@ -633,16 +639,15 @@ suite('Context Inclusion Tests (New)', () => {
         });
         testSuiteStubs.push(getConfigurationStub);
 
-        const readFileStub = sinon.stub(vscode.workspace.fs, 'readFile').callsFake(async (uri: vscode.Uri) => {
+        sandbox.stub(vscode.workspace.fs, 'readFile').callsFake(async (uri: vscode.Uri) => {
             const filePath = uri.fsPath;
             if (mockFileContents.has(filePath)) {
                 return Buffer.from(mockFileContents.get(filePath)!);
             }
             throw vscode.FileSystemError.FileNotFound(uri);
         });
-        testSuiteStubs.push(readFileStub);
 
-        const statStub = sinon.stub(vscode.workspace.fs, 'stat').callsFake(async (uri: vscode.Uri) => {
+        sandbox.stub(vscode.workspace.fs, 'stat').callsFake(async (uri: vscode.Uri) => {
             const filePath = uri.fsPath;
             if (filePath === mockWorkspaceFolder.uri.fsPath) {
                 return {
@@ -662,7 +667,6 @@ suite('Context Inclusion Tests (New)', () => {
             }
             throw vscode.FileSystemError.FileNotFound(uri);
         });
-        testSuiteStubs.push(statStub);
 
         const getWorkspaceFolderStub = sinon.stub(vscode.workspace, 'getWorkspaceFolder').returns(mockWorkspaceFolder);
         testSuiteStubs.push(getWorkspaceFolderStub);
