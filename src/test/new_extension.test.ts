@@ -25,7 +25,7 @@ suite('Jinja Compatibility Tests', () => {
 suite('Extension Test Suite', () => {
     let stubs: sinon.SinonStub[] = [];
 
-    before(async () => {
+    suiteSetup(async () => {
         const mockContext: vscode.ExtensionContext = {
             subscriptions: [],
             workspaceState: { get: () => {}, update: () => Promise.resolve(), keys: () => [] } as vscode.Memento,
@@ -38,7 +38,7 @@ suite('Extension Test Suite', () => {
         await activate(mockContext);
     });
 
-    after(() => {
+    suiteTeardown(() => {
         if (deactivate) {
             deactivate();
         }
