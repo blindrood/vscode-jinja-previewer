@@ -82,7 +82,7 @@ suite('Extension Test Suite', () => {
         const createWebviewPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
 
         if (context) {
-            const readFileSyncStub = sandbox.replace(require('fs'), 'readFileSync', sinon.stub().returns(JSON.stringify(context)));
+            sandbox.replace(require('fs'), 'readFileSync', sinon.stub().returns(JSON.stringify(context)));
         }
 
         await vscode.commands.executeCommand('jinjer.preview');
@@ -226,7 +226,7 @@ suite('Per-Workspace Configuration Tests', () => {
             return { get: sinon.stub(), has: sinon.stub(), inspect: sinon.stub(), update: sinon.stub().resolves() } as any;
         }));
 
-        stubs.push(sinon.stub(vscode.workspace, 'getWorkspaceFolder').callsFake(() => mockWorkspaceFolder));
+        sandbox.stub(vscode.workspace, 'getWorkspaceFolder').callsFake(() => mockWorkspaceFolder);
 
         sandbox.stub(vscode.workspace.fs, 'readFile').callsFake(async (uri: vscode.Uri) => {
             const filePath = uri.fsPath;
@@ -668,8 +668,7 @@ suite('Context Inclusion Tests (New)', () => {
             throw vscode.FileSystemError.FileNotFound(uri);
         });
 
-        const getWorkspaceFolderStub = sinon.stub(vscode.workspace, 'getWorkspaceFolder').returns(mockWorkspaceFolder);
-        testSuiteStubs.push(getWorkspaceFolderStub);
+        sandbox.stub(vscode.workspace, 'getWorkspaceFolder').returns(mockWorkspaceFolder);
 
         const dummyDocUri = vscode.Uri.joinPath(mockWorkspaceFolder.uri, 'dummy_template_new.j2');
         const mockEditor = {
@@ -678,10 +677,9 @@ suite('Context Inclusion Tests (New)', () => {
         if (activeTextEditorStub && typeof activeTextEditorStub.restore === 'function') {
             activeTextEditorStub.restore();
         }
-        activeTextEditorStub = sinon.stub(vscode.window, 'activeTextEditor').returns(mockEditor as any);
-        testSuiteStubs.push(activeTextEditorStub);
+        activeTextEditorStub = sandbox.stub(vscode.window, 'activeTextEditor').returns(mockEditor as any);
 
-        const createWebviewPanelStub = sinon.stub(vscode.window, 'createWebviewPanel').returns({
+        sandbox.stub(vscode.window, 'createWebviewPanel').returns({
             webview: {
                 html: '',
                 asWebviewUri: (uri: vscode.Uri) => uri,
@@ -689,7 +687,6 @@ suite('Context Inclusion Tests (New)', () => {
             reveal: sinon.stub(),
             onDidDispose: sinon.stub(),
         } as any);
-        testSuiteStubs.push(createWebviewPanelStub);
 
         consoleWarnSpy = sinon.spy(console, 'warn');
         testSuiteSpies.push(consoleWarnSpy);
