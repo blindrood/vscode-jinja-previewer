@@ -645,7 +645,7 @@ suite('Context Inclusion Tests (New)', () => {
         }
     });
 
-    beforeEach(async () => {
+    setup(async () => {
         mockFileContents.clear();
         Object.keys(mockJinjerConfig).forEach(key => delete mockJinjerConfig[key]);
         mockJinjerConfig.contextIncludeKey = '_jinjer_include_contexts';
@@ -740,7 +740,7 @@ suite('Context Inclusion Tests (New)', () => {
         testSuiteSpies.push(nunjucksConfigureSpy);
     });
 
-    afterEach(async () => {
+    teardown(async () => {
         testSuiteStubs.forEach(s => s.restore());
         testSuiteStubs = [];
         testSuiteSpies.forEach(s => s.restore());
